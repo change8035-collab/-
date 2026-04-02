@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>병원 근무표</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; background: #f0f2f5; color: #333; }
+
+  .header {
+    background: #2c3e50; color: white; padding: 16px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header-actions { display: flex; gap: 8px; }
+  .header-actions button {
+    background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+    color: white; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+  }
+  .header-actions button:hover { background: rgba(255,255,255,0.25); }
+
+  .controls {
+    background: white; padding: 14px 24px; border-bottom: 1px solid #ddd;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  .month-nav { display: flex; align-items: center; gap: 12px; }
+  .month-nav button {
+    background: #e8ecf1; border: none; padding: 6px 12px; border-radius: 6px;
+    cursor: pointer; font-size: 14px;
+  }
+  .month-nav button:hover { background: #d0d7e2; }
+  .month-nav .month-label { font-size: 18px; font-weight: 600; min-width: 140px; text-align: center; }
+
+  .staff-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .staff-controls input, .staff-controls select {
+    border: 1px solid #ccc; padding: 6px 10px; border-radius: 6px; font-size: 13px;
+  }
+  .staff-controls input { width: 100px; }
+  .staff-controls select { width: 90px; }
+  .staff-controls button {
+    background: #3498db; color: white; border: none; padding: 6px 14px;
+    border-radius: 6px; cursor: pointer; font-size: 13px;
+  }
+  .staff-controls button:hover { background: #2980b9; }
+
+  .role-badge {
+    display: inline-block; font-size: 10px; padding: 1px 5px; border-radius: 3px;
+    margin-right: 4px; font-weight: 600; color: white; vertical-align: middle;
+  }
+  .role-수간호사 { background: #1976d2; }
+  .role-간호사 { background: #e91e63; }
+  .role-간호조무사 { background: #f57c00; }
+
+  .role-group-header td {
+    background: #eceff1 !important; padding: 6px 10px !important;
+    font-weight: 700; font-size: 13px; color: #37474f; text-align: left;
+  }
+
+  .legend {
+    display: flex; gap: 12px; align-items: center; font-size: 12px; color: #666;
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-color {
+    width: 20px; height: 20px; border-radius: 4px; display: inline-block;
+    font-size: 11px; text-align: center; line-height: 20px; font-weight: 700; color: white;
+  }
+
+  .table-wrapper { padding: 16px 24px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 800px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  th, td { border: 1px solid #e0e0e0; text-align: center; font-size: 13px; }
+  th { background: #f7f8fa; padding: 8px 4px; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+  th.sun { color: #e74c3c; }
+  th.sat { color: #3498db; }
+  td { padding: 0; }
+
+  .name-cell {
+    padding: 6px 8px; font-weight: 600; white-space: nowrap; text-align: left;
+    min-width: 90px; position: sticky; left: 0; background: white; z-index: 1;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .name-cell .del-btn {
+    background: none; border: none; color: #ccc; cursor: pointer; font-size: 14px; padding: 0 2px;
+  }
+  .name-cell .del-btn:hover { color: #e74c3c; }
+
+  .shift-cell {
+    width: 34px; height: 34px; cursor: pointer; user-select: none;
+    font-weight: 700; font-size: 13px; color: white;
+    transition: transform 0.1s;
+  }
+  .shift-cell:hover { filter: brightness(1.1); transform: scale(1.05); }
+  .shift-D { background: #3498db; }
+  .shift-N { background: #8e44ad; }
+  .shift-OFF { background: #95a5a6; font-size: 10px; }
+  .shift-OFF-manual { background: #e74c3c; font-size: 10px; }
+  .shift-empty { background: white; color: #ccc; }
+
+  .stat-cell { padding: 4px 6px; font-size: 12px; font-weight: 600; min-width: 45px; }
+  .stat-header { font-size: 11px; }
+
+  .shift-type-badge {
+    display: inline-block; font-size: 10px; padding: 1px 4px; border-radius: 3px;
+    font-weight: 700; color: white; margin-left: 4px;
+  }
+  .shift-type-badge.type-D { background: #3498db; }
+  .shift-type-badge.type-N { background: #8e44ad; }
+
+  .daily-row td { background: #fafbfc; font-size: 11px; font-weight: 600; padding: 4px; color: #555; }
+  .daily-row .name-cell { font-size: 12px; background: #fafbfc; }
+
+  @media print {
+    body { background: white; }
+    .header-actions, .staff-controls, .name-cell .del-btn, .legend { display: none !important; }
+    .header { background: #333; padding: 10px 16px; }
+    .controls { padding: 8px 16px; }
+    .table-wrapper { padding: 8px; }
+    table { box-shadow: none; font-size: 11px; }
+    th, td { border-color: #999; }
+    .shift-cell { width: 26px; height: 26px; font-size: 11px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .shift-OFF { font-size: 9px; }
+    .shift-OFF-manual { font-size: 9px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏥 병원 근무표</h1>
+  <div class="header-actions">
+    <button onclick="resetSchedule()">🔄 리셋</button>
+    <button onclick="autoFill()">🎲 자동 배정</button>
+    <button onclick="exportCSV()">📥 CSV 내보내기</button>
+    <button onclick="window.print()">🖨️ 인쇄</button>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="month-nav">
+    <button onclick="changeMonth(-1)">◀ 이전</button>
+    <span class="month-label" id="monthLabel"></span>
+    <button onclick="changeMonth(1)">다음 ▶</button>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><span class="legend-color shift-D">D</span> 주간</div>
+    <div class="legend-item"><span class="legend-color shift-N">N</span> 야간</div>
+    <div class="legend-item"><span class="legend-color shift-OFF">OFF</span> 휴무</div>
+    <div class="legend-item" style="color:#999;">클릭: 근무 변경</div>
+    <div class="legend-item" style="margin-left:12px;">
+      <label style="font-size:13px;color:#555;">D OFF</label>
+      <input type="number" id="targetOffDInput" min="0" max="31" value="10"
+        style="width:48px;border:1px solid #ccc;border-radius:6px;padding:4px 6px;font-size:13px;margin-left:4px;">
+      <span style="font-size:12px;color:#999;">개</span>
+      <label style="font-size:13px;color:#555;margin-left:10px;">N OFF</label>
+      <input type="number" id="targetOffNInput" min="0" max="31" value="10"
+        style="width:48px;border:1px solid #ccc;border-radius:6px;padding:4px 6px;font-size:13px;margin-left:4px;">
+      <span style="font-size:12px;color:#999;">개 (정확히 배정)</span>
+    </div>
+  </div>
+  <div class="staff-controls">
+    <select id="roleInput">
+      <option value="수간호사">수간호사</option>
+      <option value="간호사">간호사</option>
+      <option value="간호조무사">간호조무사</option>
+    </select>
+    <input type="text" id="staffInput" placeholder="직원 이름" onkeydown="if(event.key==='Enter')addStaff()">
+    <select id="shiftTypeInput">
+      <option value="D">주간(D)</option>
+      <option value="N">야간(N)</option>
+    </select>
+    <button onclick="addStaff()">+ 직원 추가</button>
+  </div>
+</div>
+
+<div class="table-wrapper">
+  <table id="scheduleTable"></table>
+</div>
+
+<script>
+const SHIFTS = ['', 'D', 'N', 'OFF'];
+const DAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
+const ROLE_ORDER = ['수간호사', '간호사', '간호조무사'];
+
+let currentYear, currentMonth;
+let staff = []; // [{name, role, shiftType}]
+let scheduleData = {};
+let manualOffData = {}; // 수동 OFF 추적: {monthKey: {staffId: {day: true}}}
+
+function init() {
+  const now = new Date();
+  currentYear = now.getFullYear();
+  currentMonth = now.getMonth();
+  loadData();
+  render();
+}
+
+function getKey() {
+  return `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+}
+
+function getDaysInMonth(y, m) {
+  return new Date(y, m + 1, 0).getDate();
+}
+
+function getDayOfWeek(y, m, d) {
+  return new Date(y, m, d).getDay();
+}
+
+function loadData() {
+  try {
+    const s = localStorage.getItem('hospital_staff');
+    if (s) staff = JSON.parse(s);
+    const d = localStorage.getItem('hospital_schedule');
+    if (d) scheduleData = JSON.parse(d);
+    const m = localStorage.getItem('hospital_manualOff');
+    if (m) manualOffData = JSON.parse(m);
+  } catch (e) { console.error(e); }
+}
+
+function saveData() {
+  localStorage.setItem('hospital_staff', JSON.stringify(staff));
+  localStorage.setItem('hospital_schedule', JSON.stringify(scheduleData));
+  localStorage.setItem('hospital_manualOff', JSON.stringify(manualOffData));
+}
+
+function isManualOff(id, day) {
+  const key = getKey();
+  return !!(manualOffData[key] && manualOffData[key][id] && manualOffData[key][id][day]);
+}
+
+function setManualOff(id, day, val) {
+  const key = getKey();
+  if (!manualOffData[key]) manualOffData[key] = {};
+  if (!manualOffData[key][id]) manualOffData[key][id] = {};
+  if (val) manualOffData[key][id][day] = true;
+  else delete manualOffData[key][id][day];
+}
+
+function staffId(s) { return `${s.role}:${s.name}`; }
+
+function addStaff() {
+  const input = document.getElementById('staffInput');
+  const roleInput = document.getElementById('roleInput');
+  const shiftTypeInput = document.getElementById('shiftTypeInput');
+  const name = input.value.trim();
+  const role = roleInput.value;
+  const shiftType = shiftTypeInput.value;
+  if (!name) return;
+  if (staff.some(s => s.name === name && s.role === role)) { alert('이미 등록된 직원입니다.'); return; }
+  staff.push({ name, role, shiftType });
+  input.value = '';
+  saveData();
+  render();
+}
+
+function removeStaff(id) {
+  const s = staff.find(s => staffId(s) === id);
+  if (!s) return;
+  if (!confirm(`'${s.role} ${s.name}' 직원을 삭제하시겠습니까?\n해당 직원의 모든 근무 기록이 삭제됩니다.`)) return;
+  staff = staff.filter(s => staffId(s) !== id);
+  for (const key in scheduleData) {
+    if (scheduleData[key][id]) delete scheduleData[key][id];
+  }
+  saveData();
+  render();
+}
+
+function getShift(id, day) {
+  const key = getKey();
+  return (scheduleData[key] && scheduleData[key][id] && scheduleData[key][id][day]) || '';
+}
+
+function setShift(id, day, shift) {
+  const key = getKey();
+  if (!scheduleData[key]) scheduleData[key] = {};
+  if (!scheduleData[key][id]) scheduleData[key][id] = {};
+  scheduleData[key][id][day] = shift;
+  saveData();
+}
+
+const MAX_OFF = 20;
+
+function getShiftsForStaff(id) {
+  const member = staff.find(s => staffId(s) === id);
+  if (member && member.shiftType === 'D') return ['', 'D', 'OFF'];
+  if (member && member.shiftType === 'N') return ['', 'N', 'OFF'];
+  return SHIFTS; // 미지정 시 전체
+}
+
+function cycleShift(id, day) {
+  const current = getShift(id, day);
+  const isManual = isManualOff(id, day);
+  const member = staff.find(s => staffId(s) === id);
+  const work = (member && member.shiftType === 'N') ? 'N' : 'D';
+
+  let next, nextManual;
+  if (current === '') {
+    // 빈칸 → 근무
+    next = work; nextManual = false;
+  } else if (current !== 'OFF') {
+    // 근무 → 회색 OFF
+    next = 'OFF'; nextManual = false;
+  } else if (current === 'OFF' && !isManual) {
+    // 회색 OFF → 빨간 OFF
+    const stats = getStats(id);
+    if (stats.off >= MAX_OFF) {
+      alert(`OFF는 월 최대 ${MAX_OFF}개까지만 지정할 수 있습니다.`);
+      next = ''; nextManual = false;
+    } else {
+      next = 'OFF'; nextManual = true;
+    }
+  } else {
+    // 빨간 OFF → 빈칸
+    next = ''; nextManual = false;
+  }
+
+  setManualOff(id, day, nextManual);
+  setShift(id, day, next);
+  saveData();
+  render();
+}
+
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  render();
+}
+
+function getStats(id) {
+  const days = getDaysInMonth(currentYear, currentMonth);
+  let d = 0, n = 0, off = 0;
+  for (let i = 1; i <= days; i++) {
+    const s = getShift(id, i);
+    if (s === 'D') d++;
+    else if (s === 'N') n++;
+    else if (s === 'OFF') off++;
+  }
+  return { d, n, off };
+}
+
+function getStaffGrouped() {
+  const groups = {};
+  for (const s of staff) {
+    if (!groups[s.role]) groups[s.role] = [];
+    groups[s.role].push(s);
+  }
+  const ordered = [];
+  for (const role of ROLE_ORDER) {
+    if (groups[role]) ordered.push({ role, members: groups[role] });
+  }
+  return ordered;
+}
+
+function render() {
+  document.getElementById('monthLabel').textContent = `${currentYear}년 ${currentMonth + 1}월`;
+  const days = getDaysInMonth(currentYear, currentMonth);
+  const table = document.getElementById('scheduleTable');
+
+  let html = '<thead><tr><th rowspan="2" style="min-width:90px;">직원</th>';
+  for (let i = 1; i <= days; i++) {
+    const dow = getDayOfWeek(currentYear, currentMonth, i);
+    const cls = dow === 0 ? ' class="sun"' : dow === 6 ? ' class="sat"' : '';
+    html += `<th${cls}>${i}</th>`;
+  }
+  html += '<th rowspan="2" class="stat-header">D</th><th rowspan="2" class="stat-header">N</th><th rowspan="2" class="stat-header">OFF</th></tr>';
+
+  html += '<tr>';
+  for (let i = 1; i <= days; i++) {
+    const dow = getDayOfWeek(currentYear, currentMonth, i);
+    const cls = dow === 0 ? ' class="sun"' : dow === 6 ? ' class="sat"' : '';
+    html += `<th${cls} style="font-size:11px;font-weight:400;">${DAYS_KO[dow]}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  const groups = getStaffGrouped();
+  for (const group of groups) {
+    // 직종 그룹 헤더
+    html += `<tr class="role-group-header"><td colspan="${days + 4}"><span class="role-badge role-${group.role}">${group.role}</span> ${group.members.length}명</td></tr>`;
+    for (const member of group.members) {
+      const id = staffId(member);
+      const stats = getStats(id);
+      html += '<tr>';
+      const stBadge = member.shiftType ? `<span class="shift-type-badge type-${member.shiftType}">${member.shiftType}</span>` : '';
+      html += `<td><div class="name-cell"><span>${escapeHtml(member.name)}${stBadge}</span><button class="del-btn" onclick="removeStaff('${escapeJs(id)}')" title="삭제">✕</button></div></td>`;
+      for (let i = 1; i <= days; i++) {
+        const s = getShift(id, i);
+        const manual = s === 'OFF' && isManualOff(id, i);
+        const cls = manual ? 'shift-OFF-manual' : (s ? `shift-${s}` : 'shift-empty');
+        const label = s || '';
+        html += `<td class="shift-cell ${cls}" onclick="cycleShift('${escapeJs(id)}',${i})">${label}</td>`;
+      }
+      html += `<td class="stat-cell" style="color:#3498db;">${stats.d}</td>`;
+      html += `<td class="stat-cell" style="color:#8e44ad;">${stats.n}</td>`;
+      html += `<td class="stat-cell" style="color:#95a5a6;">${stats.off}</td>`;
+      html += '</tr>';
+    }
+  }
+
+  // 일별 인원 합계
+  html += '<tr class="daily-row"><td><div class="name-cell">D 인원</div></td>';
+  for (let i = 1; i <= days; i++) {
+    let count = 0;
+    for (const s of staff) { if (s.role !== '수간호사' && getShift(staffId(s), i) === 'D') count++; }
+    html += `<td>${count || ''}</td>`;
+  }
+  html += '<td></td><td></td><td></td></tr>';
+
+  html += '<tr class="daily-row"><td><div class="name-cell">N 인원</div></td>';
+  for (let i = 1; i <= days; i++) {
+    let count = 0;
+    for (const s of staff) { if (getShift(staffId(s), i) === 'N') count++; }
+    html += `<td>${count || ''}</td>`;
+  }
+  html += '<td></td><td></td><td></td></tr>';
+
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escapeJs(s) {
+  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+
+const AUTO_MAX_OFF = 10;
+const MIN_DAY_WORKERS = 3;
+const MAX_NIGHT_WORKERS = 2;
+const MAX_CONSECUTIVE = 3;
+
+function resetSchedule() {
+  if (!confirm('현재 월의 근무표를 리셋합니다.\n수동 지정한 OFF(빨간색)는 유지됩니다.\n계속하시겠습니까?')) return;
+  const days = getDaysInMonth(currentYear, currentMonth);
+  for (const member of staff) {
+    const id = staffId(member);
+    for (let i = 1; i <= days; i++) {
+      if (!isManualOff(id, i)) {
+        setShift(id, i, '');
+      }
+    }
+  }
+  saveData();
+  render();
+}
+
+function countOffInMonth(id, days) {
+  let c = 0;
+  for (let i = 1; i <= days; i++) if (getShift(id, i) === 'OFF') c++;
+  return c;
+}
+
+function autoFill() {
+  if (!confirm('빈칸을 자동으로 채웁니다.\n기존 수동 OFF는 유지됩니다.\n계속하시겠습니까?')) return;
+  const days = getDaysInMonth(currentYear, currentMonth);
+  let TARGET_OFF_D = parseInt(document.getElementById('targetOffDInput').value) || AUTO_MAX_OFF;
+  let TARGET_OFF_N = parseInt(document.getElementById('targetOffNInput').value) || AUTO_MAX_OFF;
+
+  // 전달 마지막 연속 근무일 수 계산 (이월 연속 체크용)
+  const prevConsec = {};
+  {
+    let pYear = currentYear, pMonth = currentMonth - 1;
+    if (pMonth < 0) { pMonth = 11; pYear--; }
+    const pKey = `${pYear}-${pMonth}`;
+    const pDays = getDaysInMonth(pYear, pMonth);
+    for (const member of staff) {
+      const id = staffId(member);
+      let c = 0;
+      for (let j = pDays; j >= 1; j--) {
+        const s = (scheduleData[pKey]?.[id]?.[j]) || '';
+        if (s !== 'OFF' && s !== '') c++;
+        else break;
+      }
+      prevConsec[id] = c;
+    }
+  }
+
+  // 월요일 여부 확인
+  const MON_MIN_DAY = 4; // 수간호사 제외 4명 + 수간호사 1명 = 합계 5명
+  function getDayMin(day) {
+    return getDayOfWeek(currentYear, currentMonth, day) === 1 ? MON_MIN_DAY : MIN_DAY_WORKERS;
+  }
+
+  // N 직원 수 기반 최소 OFF 자동 조정
+  const totalNWorkers = staff.filter(s => s.shiftType === 'N').length;
+  if (totalNWorkers > MAX_NIGHT_WORKERS) {
+    const minNOff = days - Math.ceil(days * MAX_NIGHT_WORKERS / totalNWorkers);
+    if (TARGET_OFF_N < minNOff) {
+      alert(`N 직원이 ${totalNWorkers}명이고 하루 최대 ${MAX_NIGHT_WORKERS}명만 근무하므로\n1인당 최소 OFF가 ${minNOff}개입니다.\nN OFF 목표를 ${minNOff}개로 조정합니다.`);
+      TARGET_OFF_N = minNOff;
+      document.getElementById('targetOffNInput').value = minNOff;
+    }
+  }
+
+  // 0단계: 수간호사 고정 배정 (평일=D, 주말=OFF)
+  for (const member of staff) {
+    if (member.role !== '수간호사') continue;
+    const id = staffId(member);
+    for (let i = 1; i <= days; i++) {
+      if (isManualOff(id, i)) continue;
+      const dow = getDayOfWeek(currentYear, currentMonth, i);
+      setShift(id, i, (dow === 0 || dow === 6) ? 'OFF' : 'D');
+    }
+  }
+
+  // 1단계: D 직원 개별 배정 (N 직원은 별도 균등 배정)
+  for (const member of staff) {
+    const id = staffId(member);
+    const shiftType = member.shiftType || 'D';
+    if (shiftType === 'N') continue; // N 직원은 아래에서 따로 처리
+    if (member.role === '수간호사') continue; // 수간호사는 0단계에서 이미 배정
+    const TARGET_OFF = TARGET_OFF_D;
+
+    let manualCount = 0;
+    for (let i = 1; i <= days; i++) if (isManualOff(id, i)) manualCount++;
+    let offCount = manualCount;
+
+    for (let i = 1; i <= days; i++) {
+      if (isManualOff(id, i)) continue;
+      if (getShift(id, i) !== '') continue;
+
+      // 연속 근무 계산 (전달 이월 포함)
+      let consecutive = 0;
+      let hitOff = false;
+      for (let j = i - 1; j >= 1; j--) {
+        const s = getShift(id, j);
+        if (s !== 'OFF' && s !== '') consecutive++;
+        else { hitOff = true; break; }
+      }
+      if (!hitOff) consecutive += (prevConsec[id] || 0);
+
+      // 3연속 근무면 반드시 OFF
+      if (consecutive >= MAX_CONSECUTIVE) {
+        setShift(id, i, 'OFF');
+        offCount++;
+        continue;
+      }
+
+      // 월요일 보호: 일요일에 연속 2일(금+토)이면 OFF → 월요일 강제 OFF 예방
+      const dowI = getDayOfWeek(currentYear, currentMonth, i);
+      if (dowI === 0 && consecutive >= 2) {
+        setShift(id, i, 'OFF');
+        offCount++;
+        continue;
+      }
+
+      // 월요일은 무조건 근무 (OFF 목표 미달성 여부 무관)
+      if (dowI === 1) {
+        setShift(id, i, shiftType);
+        continue;
+      }
+
+      // OFF 목표 달성 시 무조건 근무
+      if (offCount >= TARGET_OFF) {
+        setShift(id, i, shiftType);
+        continue;
+      }
+
+      // 남은 날짜 대비 남은 OFF로 확률 계산
+      const daysLeft = days - i + 1;
+      const offLeft = TARGET_OFF - offCount;
+      const offProb = offLeft / daysLeft;
+      if (Math.random() < offProb) {
+        setShift(id, i, 'OFF');
+        offCount++;
+      } else {
+        setShift(id, i, shiftType);
+      }
+    }
+
+    // 1-2단계 사이: OFF가 목표보다 적으면 추가 배정
+    let currentOff = countOffInMonth(id, days);
+    if (currentOff < TARGET_OFF) {
+      // 근무 중인 날 중 연속 위반 없이 OFF 가능한 날 수집
+      const workDays = [];
+      for (let i = 1; i <= days; i++) {
+        const s = getShift(id, i);
+        if (s === shiftType && !isManualOff(id, i)) {
+          let b = 0, a = 0;
+          for (let j = i - 1; j >= 1; j--) { if (getShift(id, j) !== 'OFF') b++; else break; }
+          for (let j = i + 1; j <= days; j++) { if (getShift(id, j) !== 'OFF') a++; else break; }
+          if (b + a >= 1) workDays.push(i);
+        }
+      }
+      workDays.sort(() => Math.random() - 0.5);
+      for (const day of workDays) {
+        if (currentOff >= TARGET_OFF) break;
+        let b = 0, a = 0;
+        for (let j = day - 1; j >= 1; j--) { if (getShift(id, j) !== 'OFF') b++; else break; }
+        for (let j = day + 1; j <= days; j++) { if (getShift(id, j) !== 'OFF') a++; else break; }
+        if (b <= MAX_CONSECUTIVE && a <= MAX_CONSECUTIVE) {
+          setShift(id, day, 'OFF');
+          currentOff++;
+        }
+      }
+    }
+  }
+
+  // 1.5단계: N 직원 균등 배정 (하루 정확히 2명, 간호사 1명 우선)
+  const nWorkersArr = staff.filter(s => s.shiftType === 'N');
+  if (nWorkersArr.length > 0) {
+    const nWorkTarget = days - TARGET_OFF_N;
+    const nRemaining = Object.fromEntries(nWorkersArr.map(w => [staffId(w), nWorkTarget]));
+
+    function pickWeighted(arr) {
+      // 할당량 있으면 높은 가중치, 소진 시 0.1로 낮춤
+      const weights = arr.map(w => Math.max(0.1, nRemaining[staffId(w)] || 0));
+      const total = weights.reduce((a, b) => a + b, 0);
+      let r = Math.random() * total;
+      for (let i = 0; i < arr.length; i++) {
+        r -= weights[i];
+        if (r <= 0) return arr[i];
+      }
+      return arr[arr.length - 1];
+    }
+
+    for (let day = 1; day <= days; day++) {
+      const eligible = nWorkersArr.filter(w => {
+        const id = staffId(w);
+        if (isManualOff(id, day)) return false;
+        let consec = 0;
+        for (let j = day - 1; j >= 1; j--) {
+          if (getShift(id, j) === 'N') consec++;
+          else break;
+        }
+        return consec < MAX_CONSECUTIVE;
+      });
+
+      // 오늘 선택 시 내일 강제 OFF 발생 여부 (룩어헤드)
+      function isSafe(w) {
+        const id = staffId(w);
+        let consec = 0;
+        for (let j = day - 1; j >= 1; j--) {
+          if (getShift(id, j) === 'N') consec++;
+          else break;
+        }
+        return consec < MAX_CONSECUTIVE - 1; // 오늘 포함해도 3미만
+      }
+
+      // 내일 강제 OFF 없는 직원 우선 사용
+      const safeEligible = eligible.filter(isSafe);
+      const usePool = (arr) => safeEligible.filter(w => arr.includes(w)).length > 0
+        ? safeEligible.filter(w => arr.includes(w))
+        : arr;
+
+      const selected = [];
+      // 간호사 1명 우선 (할당량 있는 간호사 우선, 없으면 전체 간호사)
+      const eligibleNurses = eligible.filter(w => w.role === '간호사');
+      if (eligibleNurses.length > 0) {
+        const nursePool = usePool(eligibleNurses.filter(w => nRemaining[staffId(w)] > 0).length > 0
+          ? eligibleNurses.filter(w => nRemaining[staffId(w)] > 0)
+          : eligibleNurses);
+        selected.push(pickWeighted(nursePool));
+      }
+      // 나머지 1명 (할당량 있는 직원 우선)
+      const rest = eligible.filter(w => !selected.includes(w));
+      if (rest.length > 0) {
+        const restPool = usePool(rest.filter(w => nRemaining[staffId(w)] > 0).length > 0
+          ? rest.filter(w => nRemaining[staffId(w)] > 0)
+          : rest);
+        selected.push(pickWeighted(restPool));
+      }
+
+      for (const w of nWorkersArr) {
+        const id = staffId(w);
+        if (isManualOff(id, day)) continue;
+        if (selected.includes(w)) {
+          setShift(id, day, 'N');
+          nRemaining[id]--;
+        } else {
+          setShift(id, day, 'OFF');
+        }
+      }
+    }
+
+    // 균등 재분배: 과다 근무자 → 부족 근무자로 스왑
+    const nTargetWork = days - TARGET_OFF_N;
+    for (let pass = 0; pass < 30; pass++) {
+      const nCounts = Object.fromEntries(nWorkersArr.map(w => {
+        const id = staffId(w);
+        let n = 0;
+        for (let i = 1; i <= days; i++) if (getShift(id, i) === 'N') n++;
+        return [id, n];
+      }));
+      const overWorkers = nWorkersArr.filter(w => nCounts[staffId(w)] > nTargetWork);
+      const underWorkers = nWorkersArr.filter(w => nCounts[staffId(w)] < nTargetWork);
+      if (!overWorkers.length || !underWorkers.length) break;
+      let swapped = false;
+      for (const over of overWorkers) {
+        const overId = staffId(over);
+        for (let day = 1; day <= days; day++) {
+          if (getShift(overId, day) !== 'N' || isManualOff(overId, day)) continue;
+          for (const under of underWorkers) {
+            const underId = staffId(under);
+            if (nCounts[underId] >= nTargetWork) continue;
+            if (getShift(underId, day) !== 'OFF' || isManualOff(underId, day)) continue;
+            // under가 이 날 N해도 연속 제약 안 넘는지
+            let cb = 0, ca = 0;
+            for (let j = day-1; j >= 1; j--) { if (getShift(underId,j)==='N') cb++; else break; }
+            for (let j = day+1; j <= days; j++) { if (getShift(underId,j)==='N') ca++; else break; }
+            if (cb + 1 + ca > MAX_CONSECUTIVE) continue;
+            // 간호사 조건 유지 확인
+            const othersN = nWorkersArr.filter(s => staffId(s) !== overId && staffId(s) !== underId && getShift(staffId(s), day) === 'N');
+            if (![under, ...othersN].some(s => s.role === '간호사')) continue;
+            setShift(overId, day, 'OFF');
+            setShift(underId, day, 'N');
+            nCounts[overId]--; nCounts[underId]++;
+            swapped = true;
+            break;
+          }
+          if (nCounts[overId] <= nTargetWork) break;
+        }
+      }
+      if (!swapped) break;
+    }
+  }
+
+  // --- 우선순위 제약 헬퍼 ---
+  const dayWorkers   = staff.filter(s => (s.shiftType || 'D') === 'D' && s.role !== '수간호사');
+  const nightWorkers = staff.filter(s => s.shiftType === 'N');
+  const nightNurses  = staff.filter(s => s.shiftType === 'N' && s.role === '간호사');
+
+  function getConsecBefore(id, day) {
+    let b = 0;
+    for (let j = day-1; j>=1; j--) {
+      if (getShift(id,j)!=='OFF' && getShift(id,j)!=='') b++;
+      else return b;
+    }
+    return b + (prevConsec[id] || 0);
+  }
+
+  function canConvertOffToWork(id, day) {
+    const b = getConsecBefore(id, day);
+    let a = 0;
+    for (let j = day+1; j<=days; j++) { if (getShift(id,j)!=='OFF' && getShift(id,j)!=='') a++; else break; }
+    return (b+1+a) <= MAX_CONSECUTIVE;
+  }
+
+  // OFF를 인접 날짜로 옮겨서 해당 날을 근무로 만들기
+  function trySwapOff(id, day, workerList, minCount) {
+    const shiftType = (staff.find(s => staffId(s) === id) || {}).shiftType || 'D';
+    for (const neighbor of [day-1, day+1]) {
+      if (neighbor < 1 || neighbor > days) continue;
+      if (getShift(id, neighbor) === 'OFF' || isManualOff(id, neighbor)) continue;
+      setShift(id, day, shiftType);
+      setShift(id, neighbor, 'OFF');
+      let b=0, a=0;
+      for (let j=day-1; j>=1; j--) { if (getShift(id,j)!=='OFF') b++; else break; }
+      for (let j=day+1; j<=days; j++) { if (getShift(id,j)!=='OFF') a++; else break; }
+      if (b+1+a <= MAX_CONSECUTIVE) {
+        const neighborCount = workerList.filter(s => getShift(staffId(s), neighbor) === shiftType).length;
+        const neighborMin = (shiftType === 'D') ? getDayMin(neighbor) : minCount;
+        if (neighborCount >= neighborMin) return true;
+      }
+      setShift(id, day, 'OFF');
+      setShift(id, neighbor, shiftType);
+    }
+    return false;
+  }
+
+  function enforceGroup(workerList, shiftType, minCountOrFn) {
+    let changed = false;
+    for (let day = 1; day <= days; day++) {
+      const minCount = typeof minCountOrFn === 'function' ? minCountOrFn(day) : minCountOrFn;
+      let count = workerList.filter(s => getShift(staffId(s), day) === shiftType).length;
+      if (count >= minCount) continue;
+      const direct = workerList.filter(s => {
+        if (s.role === '수간호사') return false; // 수간호사는 고정 스케줄
+        const id = staffId(s);
+        return getShift(id, day) === 'OFF' && !isManualOff(id, day) && canConvertOffToWork(id, day);
+      }).sort(() => Math.random() - 0.5);
+      for (const w of direct) {
+        if (count >= minCount) break;
+        setShift(staffId(w), day, shiftType);
+        count++; changed = true;
+      }
+      if (count < minCount) {
+        const swap = workerList.filter(s => {
+          const id = staffId(s);
+          return getShift(id, day) === 'OFF' && !isManualOff(id, day) && !direct.includes(s);
+        }).sort(() => Math.random() - 0.5);
+        for (const w of swap) {
+          if (count >= minCount) break;
+          if (trySwapOff(staffId(w), day, workerList, minCount)) { count++; changed = true; }
+        }
+      }
+    }
+    return changed;
+  }
+
+  // N 근무 최대 2명 초과 시 초과 인원 OFF 전환 (간호사 우선 유지)
+  function enforceMaxNight() {
+    let changed = false;
+    for (let day = 1; day <= days; day++) {
+      const working = nightWorkers.filter(s => getShift(staffId(s), day) === 'N');
+      if (working.length <= MAX_NIGHT_WORKERS) continue;
+      const nurses = working.filter(s => s.role === '간호사');
+      const nonNurses = working.filter(s => s.role !== '간호사').sort(() => Math.random() - 0.5);
+      const excess = working.length - MAX_NIGHT_WORKERS;
+      let removed = 0;
+      // 비간호사 먼저 제거, 그 다음 간호사 (단, 간호사 최소 1명 유지)
+      for (const w of [...nonNurses, ...nurses.sort(() => Math.random() - 0.5)]) {
+        if (removed >= excess) break;
+        const id = staffId(w);
+        if (isManualOff(id, day)) continue;
+        // 간호사는 N에 1명만 남은 경우 제거 안 함
+        if (w.role === '간호사') {
+          const remainingNurses = nurses.filter(s => getShift(staffId(s), day) === 'N').length;
+          if (remainingNurses <= 1) continue;
+        }
+        setShift(id, day, 'OFF');
+        removed++; changed = true;
+      }
+    }
+    return changed;
+  }
+
+  // [최우선] N 근무에 간호사 1명 이상 포함
+  function enforceNurseInNight() {
+    let changed = false;
+    for (let day = 1; day <= days; day++) {
+      const nCount = nightWorkers.filter(s => getShift(staffId(s), day) === 'N').length;
+      if (nCount === 0) continue;
+      const nurseN = nightNurses.filter(s => getShift(staffId(s), day) === 'N').length;
+      if (nurseN >= 1) continue;
+      // 간호사 N 직원 OFF → N 전환 시도
+      const direct = nightNurses.filter(s => {
+        const id = staffId(s);
+        return getShift(id, day) === 'OFF' && !isManualOff(id, day) && canConvertOffToWork(id, day);
+      }).sort(() => Math.random() - 0.5);
+      for (const w of direct) {
+        setShift(staffId(w), day, 'N'); changed = true; break;
+      }
+      if (!changed) {
+        const swap = nightNurses.filter(s => {
+          const id = staffId(s);
+          return getShift(id, day) === 'OFF' && !isManualOff(id, day) && !direct.includes(s);
+        }).sort(() => Math.random() - 0.5);
+        for (const w of swap) {
+          if (trySwapOff(staffId(w), day, nightNurses, 1)) { changed = true; break; }
+        }
+      }
+    }
+    return changed;
+  }
+
+  function enforceMaxConsec() {
+    let changed = false;
+    for (const member of staff) {
+      if (member.role === '수간호사') continue; // 수간호사는 주말 OFF로 자동 처리
+      const id = staffId(member);
+      let consecutive = prevConsec[id] || 0; // 전달 이월 연속 포함
+      for (let i = 1; i <= days; i++) {
+        const s = getShift(id, i);
+        if (s !== 'OFF') {
+          consecutive++;
+          if (consecutive > MAX_CONSECUTIVE && !isManualOff(id, i)) {
+            setShift(id, i, 'OFF');
+            consecutive = 0;
+            changed = true;
+          }
+        } else {
+          consecutive = 0;
+        }
+      }
+    }
+    return changed;
+  }
+
+  // 우선순위: 간호사 N 포함 > N 정확히 2명 > D 최소 3명 > 연속 제약
+  for (let iter = 0; iter < 15; iter++) {
+    const c1 = enforceNurseInNight();
+    const c2 = enforceMaxNight();
+    const c3 = enforceGroup(nightWorkers, 'N', MAX_NIGHT_WORKERS); // 최소 2명
+    const c4 = enforceGroup(dayWorkers, 'D', getDayMin);
+    const c5 = enforceMaxConsec();
+    if (!c1 && !c2 && !c3 && !c4 && !c5) break;
+  }
+
+  // 최종 정리: 목표와 실제 OFF 수 맞추기
+  for (const member of staff) {
+    if (member.role === '수간호사') continue; // 수간호사는 고정 스케줄
+    const id = staffId(member);
+    const shiftType = member.shiftType || 'D';
+    const TARGET_OFF = shiftType === 'N' ? TARGET_OFF_N : TARGET_OFF_D;
+    let currentOff = countOffInMonth(id, days);
+
+    // 초과분 제거
+    for (let i = days; i >= 1 && currentOff > TARGET_OFF; i--) {
+      if (getShift(id, i) !== 'OFF' || isManualOff(id, i)) continue;
+      if (!canConvertOffToWork(id, i)) continue;
+      // N 직원: 해당 날 N 인원이 MAX_NIGHT_WORKERS 미만일 때만 전환
+      if (shiftType === 'N') {
+        const nCount = nightWorkers.filter(s => getShift(staffId(s), i) === 'N').length;
+        if (nCount >= MAX_NIGHT_WORKERS) continue;
+      }
+      setShift(id, i, shiftType);
+      currentOff--;
+    }
+    // 부족분 보충
+    const workers = shiftType === 'D' ? dayWorkers : nightWorkers;
+    for (let i = 1; i <= days && currentOff < TARGET_OFF; i++) {
+      if (getShift(id, i) !== shiftType || isManualOff(id, i)) continue;
+      const b = getConsecBefore(id, i);
+      let a=0;
+      for (let j=i+1; j<=days; j++) { if(getShift(id,j)!=='OFF') a++; else break; }
+      if (b + a <= MAX_CONSECUTIVE) {
+        const minW = shiftType === 'D' ? getDayMin(i) : MAX_NIGHT_WORKERS;
+        const wCount = workers.filter(s => getShift(staffId(s), i) === shiftType).length;
+        if (wCount > minW) { setShift(id, i, 'OFF'); currentOff++; }
+      }
+    }
+  }
+
+  // 최종 정리 후 N 인원 재보정 (정확히 2명)
+  for (let iter = 0; iter < 5; iter++) {
+    const a = enforceNurseInNight();
+    const b = enforceMaxNight();
+    const c = enforceGroup(nightWorkers, 'N', MAX_NIGHT_WORKERS);
+    if (!a && !b && !c) break;
+  }
+
+  // 월요일 D인원 최소 4명 (수간호사 제외) - 공격적 보충
+  for (let day = 1; day <= days; day++) {
+    if (getDayOfWeek(currentYear, currentMonth, day) !== 1) continue;
+    let monCount = dayWorkers.filter(s => getShift(staffId(s), day) === 'D').length;
+    if (monCount >= MON_MIN_DAY) continue;
+
+    // OFF 또는 빈칸 직원을 연속 일수 적은 순으로 정렬
+    const candidates = dayWorkers.filter(s => {
+      const id = staffId(s);
+      return getShift(id, day) !== 'D' && !isManualOff(id, day);
+    }).sort((a, b) => (getConsecBefore(staffId(a), day)) - (getConsecBefore(staffId(b), day)));
+
+    for (const w of candidates) {
+      if (monCount >= MON_MIN_DAY) break;
+      const id = staffId(w);
+      const b = getConsecBefore(id, day);
+
+      if (b < MAX_CONSECUTIVE) {
+        // 연속 여유 있음 → 바로 D 배정
+        setShift(id, day, 'D');
+        monCount++;
+      } else {
+        // 연속 초과 → 이전 날짜(최대 3일) 중 여유 있는 날 OFF로 교체해 연속 끊기
+        let freed = false;
+        for (let lb = 1; lb <= 3 && !freed; lb++) {
+          const prevDay = day - lb;
+          if (prevDay < 1) break;
+          if (getShift(id, prevDay) === 'D' && !isManualOff(id, prevDay)) {
+            const prevCount = dayWorkers.filter(s => getShift(staffId(s), prevDay) === 'D').length;
+            if (prevCount > getDayMin(prevDay)) {
+              setShift(id, prevDay, 'OFF');
+              const newB = getConsecBefore(id, day);
+              if (newB < MAX_CONSECUTIVE) {
+                setShift(id, day, 'D');
+                monCount++;
+                freed = true;
+              } else {
+                setShift(id, prevDay, 'D'); // 복원
+              }
+            }
+          }
+        }
+        if (!freed) {
+          // 최후 수단: 월요일 최우선 → 연속 제약 무시하고 강제 배정
+          setShift(id, day, 'D');
+          monCount++;
+        }
+      }
+    }
+  }
+
+  saveData();
+  render();
+}
+
+function exportCSV() {
+  const days = getDaysInMonth(currentYear, currentMonth);
+  let csv = '\uFEFF'; // BOM for Excel
+  csv += '직종,직원,근무유형';
+  for (let i = 1; i <= days; i++) {
+    const dow = DAYS_KO[getDayOfWeek(currentYear, currentMonth, i)];
+    csv += `,${i}(${dow})`;
+  }
+  csv += ',D,N,OFF\n';
+
+  for (const s of staff) {
+    const id = staffId(s);
+    const stats = getStats(id);
+    csv += `${s.role},${s.name},${s.shiftType || ''}`;
+    for (let i = 1; i <= days; i++) {
+      csv += `,${getShift(id, i)}`;
+    }
+    csv += `,${stats.d},${stats.n},${stats.off}\n`;
+  }
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `근무표_${currentYear}년${currentMonth + 1}월.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+init();
+</script>
+</body>
+</html>

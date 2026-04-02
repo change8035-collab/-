@@ -1,0 +1,1912 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>BEAT ZONE</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
+canvas { display:block; position:relative; z-index:1; }
+#sp {
+  display:none; position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  background:rgba(4,0,18,0.97);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:18px; padding:30px 40px;
+  min-width:360px; z-index:100; color:#fff;
+  box-shadow:0 0 40px rgba(0,0,0,0.8);
+}
+#sp h2 { font-size:20px; margin-bottom:22px; letter-spacing:2px; opacity:.9; }
+#sp .row { display:flex; align-items:center; margin-bottom:16px; gap:12px; }
+#sp label { width:90px; font-size:13px; opacity:.6; flex-shrink:0; }
+#sp input[type=range] {
+  flex:1; -webkit-appearance:none; height:4px;
+  background:rgba(255,255,255,0.2); border-radius:2px; outline:none;
+}
+#sp input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:16px; height:16px;
+  border-radius:50%; background:#fff; cursor:pointer;
+}
+#sp .themes { display:flex; gap:8px; flex-wrap:wrap; }
+#sp .th-btn {
+  padding:6px 14px; border-radius:20px; font-size:12px;
+  border:1px solid rgba(255,255,255,0.25); background:transparent;
+  color:#fff; cursor:pointer; transition:all .15s;
+}
+#sp .th-btn.active { background:rgba(255,255,255,0.18); border-color:#fff; }
+#sp .close-btn {
+  margin-top:22px; width:100%; padding:10px; border-radius:10px;
+  background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);
+  color:#fff; font-size:14px; cursor:pointer; letter-spacing:1px;
+}
+#sp .close-btn:hover { background:rgba(255,255,255,0.18); }
+#sp .key-binds { display:flex; gap:10px; }
+#sp .key-btn {
+  width:52px; height:52px; border-radius:12px;
+  border:2px solid rgba(255,255,255,0.3);
+  background:rgba(255,255,255,0.06);
+  color:#fff; font-size:18px; font-weight:bold;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; transition:all .15s; user-select:none;
+}
+#sp .key-btn:hover { background:rgba(255,255,255,0.14); }
+#sp .key-btn.waiting {
+  border-color:#ffcc00; color:#ffcc00;
+  background:rgba(255,200,0,0.12);
+  animation:kpulse 0.8s infinite alternate;
+}
+@keyframes kpulse { from{box-shadow:0 0 4px #ffcc00} to{box-shadow:0 0 18px #ffcc00} }
+#sp .key-label { font-size:10px; opacity:.4; text-align:center; margin-top:4px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="sp">
+  <h2>⚙ 설정</h2>
+  <div class="row">
+    <label>BGM 볼륨</label>
+    <input type="range" id="bgm-vol" min="0" max="100" value="65">
+    <span id="bgm-val" style="width:32px;font-size:13px;opacity:.7">65</span>
+  </div>
+  <div class="row">
+    <label>SFX 볼륨</label>
+    <input type="range" id="sfx-vol" min="0" max="100" value="80">
+    <span id="sfx-val" style="width:32px;font-size:13px;opacity:.7">80</span>
+  </div>
+  <div class="row" style="align-items:flex-start">
+    <label style="padding-top:6px">테마</label>
+    <div class="themes" id="theme-btns"></div>
+  </div>
+  <div class="row" style="align-items:flex-start">
+    <label style="padding-top:6px">키 설정</label>
+    <div>
+      <div class="key-binds" id="key-binds">
+        <div class="key-btn" data-lane="0">F</div>
+        <div class="key-btn" data-lane="1">G</div>
+        <div class="key-btn" data-lane="2">H</div>
+        <div class="key-btn" data-lane="3">J</div>
+      </div>
+      <div class="key-label">클릭 후 원하는 키를 누르세요</div>
+    </div>
+  </div>
+  <button class="close-btn" id="sp-close">닫기</button>
+</div>
+<!-- YouTube 곡 추가 모달 -->
+<div id="yt-modal" style="display:none; position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-50%); background:rgba(4,0,18,0.97);
+  border:1px solid rgba(255,255,255,0.12); border-radius:18px;
+  padding:30px 36px; min-width:420px; z-index:100; color:#fff;
+  box-shadow:0 0 50px rgba(0,0,0,0.9);">
+  <h2 style="font-size:20px; margin-bottom:18px; letter-spacing:2px;">🎵 유튜브 곡 추가</h2>
+  <div style="margin-bottom:14px;">
+    <label style="font-size:13px; opacity:.6; display:block; margin-bottom:6px;">YouTube URL</label>
+    <input type="text" id="yt-url" placeholder="https://www.youtube.com/watch?v=..."
+      style="width:100%; padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.2);
+      background:rgba(255,255,255,0.06); color:#fff; font-size:14px; outline:none;">
+  </div>
+  <div id="yt-preview-wrap" style="display:none; margin-bottom:14px; border-radius:10px; overflow:hidden;">
+    <div id="yt-preview-player"></div>
+  </div>
+  <div style="display:flex; gap:12px; align-items:flex-end; margin-bottom:14px;">
+    <div style="flex:1;">
+      <label style="font-size:13px; opacity:.6; display:block; margin-bottom:6px;">BPM</label>
+      <input type="text" id="yt-bpm" value="120" inputmode="numeric" placeholder="60~300"
+        style="width:100%; padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.2);
+        background:rgba(255,255,255,0.06); color:#fff; font-size:16px; font-weight:bold; outline:none; text-align:center;">
+    </div>
+    <div style="flex:1;">
+      <button id="yt-tap-btn" style="width:100%; padding:12px; border-radius:10px;
+        background:rgba(255,200,0,0.15); border:2px solid #ffcc00; color:#ffcc00;
+        font-size:14px; font-weight:bold; cursor:pointer; transition:all .1s;">
+        🥁 탭 템포
+      </button>
+      <div id="yt-tap-info" style="font-size:11px; opacity:.4; text-align:center; margin-top:4px;">박자에 맞춰 반복 클릭</div>
+    </div>
+  </div>
+  <div style="margin-bottom:14px;">
+    <label style="font-size:13px; opacity:.6; display:block; margin-bottom:6px;">곡 이름 (선택)</label>
+    <input type="text" id="yt-name" placeholder="My Song"
+      style="width:100%; padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.2);
+      background:rgba(255,255,255,0.06); color:#fff; font-size:14px; outline:none;">
+  </div>
+  <div id="yt-status" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:10px; font-size:13px; text-align:center;"></div>
+  <div style="display:flex; gap:10px;">
+    <button id="yt-add-btn" style="flex:1; padding:12px; border-radius:10px;
+      background:rgba(100,200,255,0.2); border:1px solid #44aaff; color:#44aaff;
+      font-size:15px; font-weight:bold; cursor:pointer;">추가하기</button>
+    <button id="yt-cancel-btn" style="flex:1; padding:12px; border-radius:10px;
+      background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2);
+      color:#fff; font-size:14px; cursor:pointer;">취소</button>
+  </div>
+</div>
+<!-- 닉네임 설정 모달 -->
+<div id="nick-modal" style="display:none; position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-50%); background:rgba(4,0,18,0.97);
+  border:1px solid rgba(255,255,255,0.15); border-radius:18px;
+  padding:36px 40px; min-width:360px; z-index:200; color:#fff;
+  box-shadow:0 0 60px rgba(0,0,0,0.9); text-align:center;">
+  <h2 style="font-size:22px; margin-bottom:8px; letter-spacing:2px;">🎮 닉네임 설정</h2>
+  <p style="font-size:13px; opacity:.5; margin-bottom:20px;">온라인 랭킹에 표시될 이름입니다</p>
+  <input type="text" id="nick-input" maxlength="12" placeholder="닉네임 (2~12자)"
+    style="width:100%; padding:14px 18px; border-radius:12px; border:2px solid rgba(255,200,0,0.4);
+    background:rgba(255,255,255,0.06); color:#fff; font-size:20px; font-weight:bold;
+    outline:none; text-align:center; letter-spacing:2px;">
+  <button id="nick-save-btn" style="margin-top:16px; width:100%; padding:14px; border-radius:12px;
+    background:rgba(255,200,0,0.2); border:2px solid #ffcc00; color:#ffcc00;
+    font-size:16px; font-weight:bold; cursor:pointer; letter-spacing:1px;">확인</button>
+</div>
+<!-- YouTube IFrame API -->
+<script src="https://www.youtube.com/iframe_api"></script>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<div id="yt-game-player" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:-1; overflow:hidden; pointer-events:none;"></div>
+<script>
+// ══════════════════════════════════════════════
+//  BEAT ZONE  –  Rhythm Game
+// ══════════════════════════════════════════════
+
+// ── Firebase 초기화 ─────────────────────────────
+// TODO: 아래 config를 본인의 Firebase 프로젝트 정보로 교체하세요
+// https://console.firebase.google.com 에서 프로젝트 생성 후
+// Realtime Database를 만들고, 규칙을 read/write: true로 설정
+var firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "000000000000",
+  appId: "YOUR_APP_ID"
+};
+var firebaseReady=false;
+try {
+  firebase.initializeApp(firebaseConfig);
+  var db=firebase.database();
+  firebaseReady=true;
+} catch(e){ console.warn('Firebase 초기화 실패, 로컬 랭킹 사용',e); }
+
+// ── 닉네임 시스템 ───────────────────────────────
+var playerNick=localStorage.getItem('bz_nickname')||'';
+var nickModalShown=false;
+
+function showNickModal(callback){
+  nickModalShown=true;
+  var modal=document.getElementById('nick-modal');
+  var input=document.getElementById('nick-input');
+  var btn=document.getElementById('nick-save-btn');
+  modal.style.display='block';
+  input.value=playerNick;
+  input.focus();
+  function save(){
+    var v=input.value.trim();
+    if(v.length<2){ input.style.borderColor='#ff4444'; return; }
+    playerNick=v;
+    localStorage.setItem('bz_nickname',v);
+    modal.style.display='none';
+    nickModalShown=false;
+    btn.removeEventListener('click',save);
+    input.removeEventListener('keydown',enter);
+    if(callback) callback();
+  }
+  function enter(e){ if(e.key==='Enter') save(); }
+  btn.addEventListener('click',save);
+  input.addEventListener('keydown',enter);
+}
+
+// 첫 접속 시 닉네임 설정
+if(!playerNick){
+  window.addEventListener('load',function(){ showNickModal(); });
+}
+
+var c = document.getElementById('c');
+var ctx = c.getContext('2d');
+var W, H;
+function resize(){ W=c.width=window.innerWidth; H=c.height=window.innerHeight; }
+resize(); window.addEventListener('resize', resize);
+
+// ── Audio ───────────────────────────────────────
+var AC = new (window.AudioContext||window.webkitAudioContext)();
+var bgmGain = AC.createGain(); bgmGain.gain.value=0.65; bgmGain.connect(AC.destination);
+var sfxGain = AC.createGain(); sfxGain.gain.value=0.80; sfxGain.connect(AC.destination);
+var masterGain = bgmGain; // BGM uses bgmGain
+
+function tone(freq, type, dur, vol, t) {
+  if(t < AC.currentTime) t = AC.currentTime;
+  var o=AC.createOscillator(), g=AC.createGain();
+  o.connect(g); g.connect(masterGain);
+  o.type=type||'sine'; o.frequency.value=freq;
+  g.gain.setValueAtTime(vol||0.3, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+  o.start(t); o.stop(t+dur+0.05);
+}
+
+function noise(dur, vol, t, hpFreq) {
+  if(t < AC.currentTime) t = AC.currentTime;
+  var samples = Math.ceil(AC.sampleRate * dur);
+  var buf=AC.createBuffer(1,samples,AC.sampleRate);
+  var d=buf.getChannelData(0);
+  for(var i=0;i<samples;i++) d[i]=Math.random()*2-1;
+  var src=AC.createBufferSource(); src.buffer=buf;
+  var hp=AC.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=hpFreq||5000;
+  var g=AC.createGain();
+  src.connect(hp); hp.connect(g); g.connect(masterGain);
+  g.gain.setValueAtTime(vol||0.2, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+  src.start(t); src.stop(t+dur+0.05);
+}
+
+function kick(t, vol) {
+  if(t < AC.currentTime) t=AC.currentTime;
+  var o=AC.createOscillator(), g=AC.createGain();
+  o.connect(g); g.connect(masterGain);
+  o.type='sine';
+  o.frequency.setValueAtTime(150,t);
+  o.frequency.exponentialRampToValueAtTime(40,t+0.15);
+  g.gain.setValueAtTime(vol||0.5,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+  o.start(t); o.stop(t+0.35);
+}
+function snare(t, vol) {
+  noise(0.14, vol||0.28, t, 2000);
+  tone(200,'square',0.07,(vol||0.28)*0.5,t);
+}
+function hihat(t, vol, open) {
+  noise(open?0.12:0.04, vol||0.1, t, 8000);
+}
+// ── 풍부한 음악용 헬퍼 ────────────────────────
+function pad(freqs, dur, vol, t) {
+  // 여러 음을 동시에 - 패드/코드 사운드
+  for(var i=0;i<freqs.length;i++){
+    tone(freqs[i],'sine',dur,(vol||0.1)/freqs.length,t);
+    // 약간 디튠된 레이어 (풍성한 사운드)
+    tone(freqs[i]*1.003,'triangle',dur,(vol||0.1)/freqs.length*0.5,t);
+  }
+}
+function arp(freq, type, dur, vol, t) {
+  // 아르페지오용 짧은 음
+  if(t<AC.currentTime) t=AC.currentTime;
+  var o=AC.createOscillator(), g=AC.createGain();
+  var flt=AC.createBiquadFilter();
+  flt.type='lowpass'; flt.frequency.value=2000;
+  o.connect(flt); flt.connect(g); g.connect(masterGain);
+  o.type=type||'sawtooth'; o.frequency.value=freq;
+  g.gain.setValueAtTime(vol||0.12,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  o.start(t); o.stop(t+dur+0.05);
+}
+function heavyBass(freq, dur, vol, t) {
+  // 무거운 디스토션 베이스
+  if(t<AC.currentTime) t=AC.currentTime;
+  var o=AC.createOscillator(), o2=AC.createOscillator();
+  var g=AC.createGain();
+  var dist=AC.createWaveShaper();
+  var curve=new Float32Array(256);
+  for(var i=0;i<256;i++){ var x=i*2/255-1; curve[i]=Math.tanh(x*3); }
+  dist.curve=curve;
+  o.connect(dist); o2.connect(dist); dist.connect(g); g.connect(masterGain);
+  o.type='sawtooth'; o.frequency.value=freq;
+  o2.type='square'; o2.frequency.value=freq*1.005;
+  g.gain.setValueAtTime(vol||0.15,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  o.start(t); o.stop(t+dur+0.05);
+  o2.start(t); o2.stop(t+dur+0.05);
+}
+function sfxTone(freq,type,dur,vol,t){
+  if(t<AC.currentTime)t=AC.currentTime;
+  var o=AC.createOscillator(),g=AC.createGain();
+  o.connect(g);g.connect(sfxGain);
+  o.type=type||'sine';o.frequency.value=freq;
+  g.gain.setValueAtTime(vol||0.3,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  o.start(t);o.stop(t+dur+0.05);
+}
+function hitSound(j) {
+  // 효과음 비활성화
+}
+
+// ── BGM look-ahead scheduler ─────────────────
+var _bgmTimer=null, _bgmStep=0, _bgmSongStart=0, _bgmSong=null;
+function startBGM(song, startAC){
+  stopBGM();
+  _bgmSong=song; _bgmSongStart=startAC; _bgmStep=0;
+  _scheduleBGM();
+}
+function stopBGM(){ if(_bgmTimer){clearTimeout(_bgmTimer);_bgmTimer=null;} _bgmSong=null; }
+function _scheduleBGM(){
+  if(!_bgmSong) return;
+  var beat=60/_bgmSong.bpm;
+  var step=beat*0.25; // 16th note grid
+  var ahead=0.55;
+  while(true){
+    var t=_bgmSongStart+_bgmStep*step;
+    if(t > AC.currentTime+ahead) break;
+    if(_bgmStep > _bgmSong.bpm*4*3) break; // max 3 min
+    var beatPos=_bgmStep*0.25;
+    var s16=Math.round((beatPos%4)*4)%16;
+    if(t >= AC.currentTime-0.01) _bgmSong.beat(t, beatPos, s16, beat);
+    _bgmStep++;
+  }
+  _bgmTimer=setTimeout(_scheduleBGM, 200);
+}
+
+// ── Helper: build beatmap from pattern shorthand ──
+// n(beat, lane) helper used inside IIFE
+function buildMap(fn) {
+  var bm=[];
+  fn(function(b,l){ bm.push({b:b,l:l}); });
+  bm.sort(function(a,x){return a.b-x.b;});
+  return bm;
+}
+
+// ══════════════════════════════════════════════
+//  SONGS
+// ══════════════════════════════════════════════
+var SONGS = []; // 유튜브 곡만 사용
+
+/* ── 기존 곡 삭제됨 ──────────────────────────
+// ── Song 0: NEON RUSH (EDM, 128 BPM) ──────────
+{
+  name:'NEON RUSH', sub:'128 BPM · EDM', bpm:128,
+  color:'#ff44aa', bgTop:'#16002a', bgBot:'#00000e',
+  endBeat:64,
+  beatmap: buildMap(function(n){
+    // Intro: quarter notes (0-7)
+    n(0,0);n(1,1);n(2,2);n(3,3);
+    n(4,0);n(5,2);n(6,1);n(7,3);
+    // Build: 8th notes (8-15)
+    n(8,0);n(8.5,2);n(9,1);n(9.5,3);
+    n(10,0);n(10.5,1);n(11,2);n(11.5,3);
+    n(12,0);n(12.5,2);n(13,0);n(13.5,1);
+    n(14,2);n(14.5,3);n(15,0);n(15.5,2);
+    // Drop 1: chords (16-23)
+    n(16,0);n(16,2);n(17,1);n(17,3);
+    n(18,0);n(18,2);n(19,1);n(19,3);
+    n(20,0);n(20.5,1);n(21,2);n(21.5,3);
+    n(22,0);n(22,3);n(22.5,1);n(22.5,2);
+    n(23,0);n(23.25,1);n(23.5,2);n(23.75,3);
+    // Syncopated fill (24-31)
+    n(24,0);n(24.75,2);n(25.5,1);n(26,3);
+    n(26.5,0);n(27,2);n(27.5,0);n(27.75,1);
+    n(28,2);n(28,3);n(29,0);n(29.5,1);
+    n(30,2);n(30.25,3);n(30.5,0);n(30.75,1);
+    n(31,0);n(31,2);n(31.5,1);n(31.5,3);
+    // Break (32-39)
+    n(32,0);n(33,3);n(34,1);n(35,2);
+    n(36,0);n(36.5,1);n(37,2);n(37.5,3);
+    n(38,0);n(38.5,2);n(39,1);n(39.5,3);
+    // Big drop (40-47)
+    n(40,0);n(40,2);n(40.5,1);n(40.5,3);
+    n(41,0);n(41.25,1);n(41.5,2);n(41.75,3);
+    n(42,0);n(42,1);n(42,2);n(42,3);
+    n(43,0);n(43.5,2);n(44,1);n(44.5,3);
+    n(45,0);n(45,3);n(46,1);n(46,2);
+    n(47,0);n(47.25,1);n(47.5,2);n(47.75,3);
+    // Outro stream (48-63)
+    var stream=[0,2,1,3,0,1,2,3,3,2,1,0,0,2,1,3,
+                1,3,0,2,2,0,3,1,0,1,2,3,3,2,1,0];
+    for(var i=0;i<32;i++) n(48+i*0.5, stream[i]);
+  }),
+  beat: function(t, beatPos, s16, beat){
+    var bar=Math.floor(beatPos/4);
+    // ── 드럼: 4-on-floor EDM ──
+    if(s16===0) kick(t, 0.55);
+    if(s16===8) { snare(t, 0.38); noise(0.08,0.12,t,4000); }
+    if(s16%2===0) hihat(t, 0.07);
+    if(s16%2===1 && bar>=4) hihat(t, 0.04, true);
+    // ── 서브 베이스 ──
+    var bassNotes=[55,55,65,73, 55,55,82,65, 48,55,65,73, 55,65,55,48];
+    if(s16===0) tone(bassNotes[Math.floor(beatPos)%16],'sine',beat*0.9,0.22,t);
+    // ── 신스 패드 코드 (4마디마다 코드 체인지) ──
+    var chords=[[261,330,392],[294,349,440],[330,415,494],[261,330,392]];
+    if(s16===0 && Math.floor(beatPos)%4===0){
+      pad(chords[bar%4], beat*3.5, 0.18, t);
+    }
+    // ── 아르페지오 (빌드업 이후) ──
+    if(bar>=4){
+      var arpNotes=[523,659,784,659, 587,698,880,698, 659,784,988,784, 523,659,784,659];
+      if(s16%2===0){
+        arp(arpNotes[(Math.floor(beatPos*2)+s16/2)%16],'sawtooth',beat*0.3,0.08,t);
+      }
+    }
+    // ── 리드 멜로디 (드롭 구간) ──
+    if(bar>=8 && s16===0){
+      var lead=[659,784,880,784, 988,880,659,784];
+      tone(lead[Math.floor(beatPos/2)%8],'square',beat*0.6,0.09,t);
+      tone(lead[Math.floor(beatPos/2)%8]*2,'sine',beat*0.3,0.04,t);
+    }
+  }
+},
+
+// ── Song 1: LO-FI DRIFT (Chill, 85 BPM) ──────
+{
+  name:'LO-FI DRIFT', sub:'85 BPM · Chill', bpm:85,
+  color:'#44aaff', bgTop:'#001828', bgBot:'#00000c',
+  endBeat:48,
+  beatmap: buildMap(function(n){
+    // Sparse quarter notes (0-15)
+    n(0,0);n(2,2);n(4,1);n(6,3);
+    n(8,0);n(9,1);n(10,2);n(11,3);
+    n(12,0);n(12.5,1);n(14,2);n(15.5,3);
+    // 8th note groove (16-23)
+    n(16,0);n(17,2);n(18,1);n(18.5,0);
+    n(19,3);n(20,1);n(20.5,0);n(21,2);
+    n(21.5,3);n(22,0);n(22.5,2);n(23,1);n(23.5,3);
+    // Build (24-31)
+    n(24,0);n(24.5,1);n(25,2);n(25.5,3);
+    n(26,0);n(26.5,2);n(27,1);n(27.5,3);
+    n(28,0);n(28,2);n(29,1);n(29,3);
+    n(30,0);n(30.5,1);n(31,2);n(31.5,3);
+    // Groove fill (32-39)
+    n(32,0);n(33,1);n(34,2);n(35,3);
+    n(36,0);n(36.5,1);n(37,2);n(37.5,0);
+    n(38,3);n(38.5,2);n(39,1);n(39.5,0);
+    // Outro (40-47)
+    n(40,0);n(40.25,1);n(40.5,2);n(40.75,3);
+    n(41,0);n(41.5,2);n(42,1);n(42.5,3);
+    n(43,0);n(43,3);n(44,1);n(44,2);
+    n(45,0);n(45.5,1);n(46,2);n(46.5,3);
+    n(47,0);n(47.25,1);n(47.5,2);n(47.75,3);
+  }),
+  beat: function(t, beatPos, s16, beat){
+    var bar=Math.floor(beatPos/4);
+    // ── 붐뱁 드럼 (느릿하고 따뜻) ──
+    if(s16===0) kick(t, 0.35);
+    if(s16===10) kick(t, 0.18); // ghost kick
+    if(s16===4) snare(t, 0.2);
+    if(s16===12) snare(t, 0.15);
+    // 스윙 하이햇 (불규칙)
+    if(s16===0||s16===3||s16===6||s16===8||s16===11||s16===14) hihat(t,0.045);
+    // ── 로즈 피아노 코드 (재즈 보이싱) ──
+    var chords=[
+      [261,330,392,494], // Cmaj7
+      [220,277,330,415], // Am7
+      [247,311,370,466], // Bm7
+      [196,247,294,370], // Gmaj7
+    ];
+    if(s16===0 && Math.floor(beatPos)%2===0){
+      var ch=chords[bar%4];
+      for(var i=0;i<ch.length;i++){
+        tone(ch[i],'sine',beat*1.8,0.06,t);
+        tone(ch[i]*1.002,'triangle',beat*1.5,0.03,t); // 디튠 레이어
+      }
+    }
+    // ── 워킹 베이스 ──
+    var bassLine=[130,147,165,147, 110,130,147,130, 123,147,165,147, 98,110,123,130];
+    if(s16===0){
+      tone(bassLine[Math.floor(beatPos)%16],'triangle',beat*0.7,0.14,t);
+    }
+    // ── 멜로디 (따뜻한 사인파) ──
+    if(bar>=2 && (s16===0||s16===6||s16===10)){
+      var mel=[523,494,440,392, 440,494,523,587, 659,587,523,494, 440,392,440,494];
+      var mi=(Math.floor(beatPos*2)+Math.floor(s16/4))%16;
+      tone(mel[mi],'sine',beat*0.5,0.06,t);
+    }
+    // ── 비닐 크랙 느낌 (약한 노이즈) ──
+    if(s16===0 && bar%2===0) noise(beat*3, 0.012, t, 1000);
+  }
+},
+
+// ── Song 2: OVERDRIVE (Hard, 175 BPM) ─────────
+{
+  name:'OVERDRIVE', sub:'175 BPM · Hard', bpm:175,
+  color:'#ff6600', bgTop:'#1c0400', bgBot:'#060000',
+  endBeat:64,
+  beatmap: buildMap(function(n){
+    var p1=[0,1,2,3,0,2,1,3,0,3,1,2,0,1,2,3];
+    var p2=[0,2,0,2,1,3,1,3,0,1,2,3,3,2,1,0];
+    // Intro: quarter (0-7)
+    for(var i=0;i<8;i++) n(i,i%4);
+    // 8th buildup (8-15)
+    var b8=[0,2,1,3,0,1,2,3,3,2,1,0,0,2,1,3];
+    for(var i=0;i<16;i++) n(8+i*0.5,b8[i]);
+    // 16th burst 1 (16-23)
+    for(var i=0;i<32;i++) n(16+i*0.25,p1[i%16]);
+    // Chord hits (24-31)
+    var pairs=[[0,2],[1,3],[0,1],[2,3],[0,3],[1,2],[0,2],[1,3]];
+    for(var i=0;i<8;i++){ n(24+i,pairs[i][0]); n(24+i,pairs[i][1]); }
+    // 16th burst 2 (32-39)
+    for(var i=0;i<32;i++) n(32+i*0.25,p2[i%16]);
+    // Mixed dense (40-47)
+    for(var i=0;i<32;i++){
+      if(i%4===0||i%4===1) n(40+i*0.25,[0,1,2,3][Math.floor(i/4)%4]);
+      else n(40+i*0.25,[0,2,1,3][i%4]);
+    }
+    // Final barrage (48-63)
+    var fb=[0,1,2,3,0,2,1,3,0,3,1,2,3,2,1,0];
+    for(var i=0;i<64;i++) n(48+i*0.25,fb[i%16]);
+  }),
+  beat: function(t, beatPos, s16, beat){
+    var bar=Math.floor(beatPos/4);
+    // ── 더블 베이스 드럼 (빠르고 강렬) ──
+    if(s16===0||s16===4||s16===8||s16===12) kick(t,0.5);
+    if(s16===2||s16===6||s16===10||s16===14) kick(t,0.3); // 더블 킥
+    // 강한 스네어
+    if(s16===4||s16===12) { snare(t,0.45); noise(0.1,0.15,t,3000); }
+    // 16분음표 하이햇 + 오픈
+    hihat(t,0.06);
+    if(s16===6||s16===14) hihat(t,0.08,true);
+    // ── 디스토션 베이스 리프 ──
+    var bassRiff=[55,0,55,65, 55,0,73,65, 82,0,73,55, 48,55,65,73];
+    if(s16%2===0){
+      var bn=bassRiff[Math.floor(beatPos*2+s16/2)%16];
+      if(bn>0) heavyBass(bn, beat*0.2, 0.12, t);
+    }
+    // ── 파워 코드 (디스토션 기타 느낌) ──
+    var pwrChords=[[110,165],[130,196],[146,220],[110,165]];
+    if(s16===0){
+      var pc=pwrChords[bar%4];
+      heavyBass(pc[0], beat*0.4, 0.08, t);
+      heavyBass(pc[1], beat*0.35, 0.06, t);
+    }
+    // ── 스크림 리드 (후반) ──
+    if(bar>=4 && (s16===0||s16===8)){
+      var lead=[880,988,1047,988, 784,880,988,784, 659,784,880,659, 988,880,784,659];
+      var li=Math.floor(beatPos)%16;
+      tone(lead[li],'sawtooth',beat*0.15,0.07,t);
+      tone(lead[li]*1.01,'square',beat*0.12,0.04,t);
+    }
+    // ── 크래쉬 심벌 (4마디마다) ──
+    if(s16===0 && Math.floor(beatPos)%16===0) noise(0.6,0.15,t,3000);
+  }
+}
+
+*/ // end SONGS (주석 끝)
+
+// ── Themes ────────────────────────────────────
+var THEMES = [
+  {name:'기본',   cols:['#ff4488','#00ccff','#ffcc00','#44ff88']},
+  {name:'파이어', cols:['#ff2200','#ff6600','#ffaa00','#ffdd44']},
+  {name:'오션',   cols:['#0077ff','#00bbff','#00eeff','#44ffdd']},
+  {name:'파스텔', cols:['#ff99cc','#99ccff','#ffddaa','#aaffcc']},
+  {name:'모노',   cols:['#ffffff','#cccccc','#999999','#666666']},
+];
+var currentTheme=0;
+
+// ── Game constants ────────────────────────────
+var KEYS  = ['F','G','H','J'];
+var CODES = ['KeyF','KeyG','KeyH','KeyJ'];
+var COLORS= THEMES[0].cols.slice();
+var LANE_W= 100;
+var NOTE_PPS = 250; // pixels per second (느리게)
+var JUDGE = { PERFECT:45, GOOD:80 };
+
+function hitY(){ return H-120; }
+function leadTime(){ return (hitY()+30)/NOTE_PPS; }
+function laneX(i){ return (W-LANE_W*4)/2 + LANE_W*i + LANE_W/2; }
+
+// ── Ranking System (Firebase + localStorage fallback) ─────────────
+function getRankPath(s,diffName){
+  var id=s.isYT?s.ytVideoId:s.name.replace(/[^a-zA-Z0-9가-힣]/g,'_');
+  return 'ranks/'+id+(diffName?'/'+diffName:'');
+}
+function getRankKey(s,diffName){
+  var base='bz_rank_'+(s.isYT?s.ytVideoId:s.name);
+  if(diffName) return base+'_'+diffName;
+  return base;
+}
+
+// 온라인 랭킹 가져오기
+function getRankingOnline(s,diffName,callback){
+  if(!firebaseReady){
+    // fallback: localStorage
+    try{ callback(JSON.parse(localStorage.getItem(getRankKey(s,diffName)))||[]); }
+    catch(e){ callback([]); }
+    return;
+  }
+  var path=getRankPath(s,diffName);
+  db.ref(path).orderByChild('score').limitToLast(10).once('value',function(snap){
+    var ranks=[];
+    snap.forEach(function(child){ ranks.push(child.val()); });
+    ranks.sort(function(a,b){return b.score-a.score;});
+    callback(ranks);
+  },function(err){
+    console.warn('Firebase 읽기 실패',err);
+    try{ callback(JSON.parse(localStorage.getItem(getRankKey(s,diffName)))||[]); }
+    catch(e){ callback([]); }
+  });
+}
+
+// 점수 저장 (온라인 + 로컬)
+function saveScore(s, sc, acc, grade, maxC, diffName){
+  var entry={
+    nick:playerNick||'???',
+    score:sc, acc:acc, grade:grade, combo:maxC,
+    date:Date.now()
+  };
+
+  // 로컬 저장 (fallback)
+  var localRanks=[];
+  try{ localRanks=JSON.parse(localStorage.getItem(getRankKey(s,diffName)))||[]; }catch(e){}
+  localRanks.push(entry);
+  localRanks.sort(function(a,b){return b.score-a.score;});
+  if(localRanks.length>10) localRanks=localRanks.slice(0,10);
+  localStorage.setItem(getRankKey(s,diffName), JSON.stringify(localRanks));
+
+  // Firebase 저장
+  if(firebaseReady&&diffName){
+    var path=getRankPath(s,diffName);
+    db.ref(path).push(entry).catch(function(e){ console.warn('Firebase 저장 실패',e); });
+  }
+  return localRanks;
+}
+
+function getBestScore(s){
+  var best=null;
+  for(var d=0;d<DIFFICULTIES.length;d++){
+    try{
+      var r=JSON.parse(localStorage.getItem(getRankKey(s,DIFFICULTIES[d].name)))||[];
+      if(r.length>0&&(!best||r[0].score>best.score)) best=r[0];
+    }catch(e){}
+  }
+  return best;
+}
+
+// ── State ─────────────────────────────────────
+var state='menu'; // menu | difficulty | countdown | play | result
+var selSong=0;
+var selDifficulty=1; // 0=EASY, 1=NORMAL, 2=HARD, 3=EXPERT
+var DIFFICULTIES=[
+  {name:'EASY',   color:'#44dd66', densityMul:0.4, speedMul:0.7,  desc:'느리고 여유로운'},
+  {name:'NORMAL', color:'#44aaff', densityMul:0.7, speedMul:1.0,  desc:'적당한 도전'},
+  {name:'HARD',   color:'#ff6644', densityMul:1.0, speedMul:1.3,  desc:'빡센 리듬'},
+  {name:'EXPERT', color:'#ff44dd', densityMul:1.3, speedMul:1.6,  desc:'한계를 넘어서'}
+];
+var diffHover=-1;
+var song=null, songStartAC=0;
+var countdownStart=0; // Date.now() when countdown began
+var settingsOpen=false;
+var pool=[], nextNI=0;
+var score=0,combo=0,maxCombo=0;
+var counts={PERFECT:0,GOOD:0,MISS:0};
+var particles=[], hitFx=[];
+var laneFlash=[0,0,0,0];
+var judgeDisp={txt:'',color:'#fff',life:0};
+
+// ── Start ──────────────────────────────────────
+var baseNotePPS=280;
+function startGame(){
+  if(AC.state==='suspended') AC.resume();
+  song = SONGS[selSong];
+  var diff=DIFFICULTIES[selDifficulty];
+  // 난이도에 맞춰 비트맵 재생성
+  var dur=song.duration||90;
+  song.beatmap=generateBeatmap(song.bpm, dur, selDifficulty);
+  // 난이도에 따른 노트 속도
+  NOTE_PPS=baseNotePPS*diff.speedMul;
+  song.currentDiff=diff.name;
+  score=0;combo=0;maxCombo=0;
+  counts={PERFECT:0,GOOD:0,MISS:0};
+  pool=[];hitFx=[];particles=[];
+  laneFlash=[0,0,0,0];nextNI=0;
+  judgeDisp={txt:'',color:'#fff',life:0};
+  var bps=song.bpm/60;
+  for(var i=0;i<song.beatmap.length;i++)
+    song.beatmap[i].hitT = song.beatmap[i].b/bps;
+  // Start 3-second countdown first
+  countdownStart = Date.now();
+  state='countdown';
+}
+function launchPlay(){
+  // Called after countdown ends
+  // leadTime만큼 뒤로 밀어서 첫 노트가 맨 위(y=-30)에서 시작하게 함
+  var lt = (hitY() + 30) / NOTE_PPS;
+  songStartAC = AC.currentTime + lt + 0.1;
+  startBGM(song, songStartAC);
+  state='play';
+}
+var lastRanks=[], lastRankPos=-1, onlineRanksLoading=false;
+function endGame(){
+  stopBGM();
+  var tot=counts.PERFECT+counts.GOOD+counts.MISS;
+  var acc=tot>0?Math.round((counts.PERFECT+counts.GOOD*0.5)/tot*100):0;
+  var grade=acc>=95?'S':acc>=85?'A':acc>=70?'B':acc>=50?'C':'D';
+  var diffName=song.currentDiff||'NORMAL';
+  lastRanks=saveScore(song, score, acc, grade, maxCombo, diffName);
+  lastRankPos=-1;
+  for(var i=0;i<lastRanks.length;i++){
+    if(lastRanks[i].score===score&&lastRanks[i].nick===playerNick){ lastRankPos=i; break; }
+  }
+  state='result';
+
+  // 온라인 랭킹 비동기 로드
+  onlineRanksLoading=true;
+  getRankingOnline(song,diffName,function(ranks){
+    lastRanks=ranks;
+    onlineRanksLoading=false;
+    // 내 위치 찾기
+    lastRankPos=-1;
+    for(var i=0;i<lastRanks.length;i++){
+      if(lastRanks[i].score===score&&lastRanks[i].nick===playerNick){ lastRankPos=i; break; }
+    }
+  });
+}
+
+// ── Update ────────────────────────────────────
+function update(){
+  if(state==='countdown'){
+    var elapsed=(Date.now()-countdownStart)/1000;
+    if(elapsed>=3) launchPlay();
+    return;
+  }
+  if(state!=='play') return;
+  var st=AC.currentTime-songStartAC;
+  var lt=leadTime(), hy=hitY();
+
+  // Spawn notes
+  while(nextNI<song.beatmap.length){
+    var nm=song.beatmap[nextNI];
+    if(st >= nm.hitT-lt){
+      pool.push({
+        lane:nm.l,
+        hitT:nm.hitT,
+        spawnAC: songStartAC+nm.hitT-lt,
+        y:-30, hit:false, missed:false
+      });
+      nextNI++;
+    } else break;
+  }
+
+  // Update notes
+  for(var i=pool.length-1;i>=0;i--){
+    var n=pool[i];
+    n.y = -30 + (AC.currentTime - n.spawnAC)*NOTE_PPS;
+    if(!n.hit&&!n.missed&&n.y>hy+JUDGE.GOOD){
+      n.missed=true; counts.MISS++; combo=0;
+      showJudge('MISS');
+    }
+    if(n.y>H+60) pool.splice(i,1);
+  }
+
+  // Song end
+  if(nextNI>=song.beatmap.length && pool.length===0){
+    var last=song.beatmap[song.beatmap.length-1];
+    if(st>last.hitT+2) endGame();
+  }
+
+  // Particles
+  for(var i=particles.length-1;i>=0;i--){
+    var p=particles[i];
+    p.x+=p.vx;p.y+=p.vy;p.vx*=0.91;p.vy*=0.91;p.life--;
+    if(p.life<=0) particles.splice(i,1);
+  }
+  for(var i=hitFx.length-1;i>=0;i--){
+    var h=hitFx[i]; h.y+=h.vy; h.life--;
+    if(h.life<=0) hitFx.splice(i,1);
+  }
+  for(var i=0;i<4;i++) if(laneFlash[i]>0) laneFlash[i]--;
+  if(judgeDisp.life>0) judgeDisp.life--;
+}
+
+// ── Judge ─────────────────────────────────────
+function judge(lane){
+  laneFlash[lane]=12;
+  var hy=hitY(), best=-1, bestD=9999;
+  for(var i=0;i<pool.length;i++){
+    var n=pool[i];
+    if(n.lane===lane&&!n.hit&&!n.missed){
+      var d=Math.abs(n.y-hy);
+      if(d<bestD){bestD=d;best=i;}
+    }
+  }
+  // 해당 레인에 노트 없으면 → 패널티 없이 무시
+  if(best===-1) return;
+  // 판정 범위 밖이면 → 노트 유지, 무시
+  if(bestD>JUDGE.GOOD) return;
+  var j = bestD<=JUDGE.PERFECT?'PERFECT':'GOOD';
+  pool[best].hit=true;
+  showJudge(j,lane,pool[best].y);
+  counts[j]++;
+  combo++; if(combo>maxCombo)maxCombo=combo;
+  score += j==='PERFECT'?(100+combo*2):(50+combo);
+  boom(laneX(lane),hy,COLORS[lane],j==='PERFECT'?20:10);
+}
+
+function showJudge(j,lane,ny){
+  var col=j==='PERFECT'?'#ffff44':j==='GOOD'?'#44ff88':'#ff4455';
+  judgeDisp={txt:j,color:col,life:40};
+  if(lane!==undefined)
+    hitFx.push({x:laneX(lane),y:ny||hitY(),txt:j,color:col,life:40,vy:-1.5});
+}
+
+function boom(x,y,col,cnt){
+  for(var i=0;i<cnt;i++){
+    var a=Math.random()*6.28,s=2+Math.random()*5;
+    particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+      life:25+Math.random()*20,maxLife:45,size:2+Math.random()*4,color:col});
+  }
+}
+
+// ── Draw helpers ──────────────────────────────
+function rgba(hex,a){
+  var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}
+function rr(x,y,w,h,r){
+  if(ctx.roundRect) ctx.roundRect(x,y,w,h,r);
+  else ctx.rect(x,y,w,h);
+}
+
+// ── Draw Countdown ────────────────────────────
+function drawCountdown(){
+  // Draw game bg behind countdown
+  var grd=ctx.createLinearGradient(0,0,0,H);
+  grd.addColorStop(0,song.bgTop); grd.addColorStop(1,song.bgBot);
+  ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+  var sx=(W-LANE_W*4)/2, hy=hitY();
+  for(var i=0;i<4;i++){
+    ctx.fillStyle=rgba(COLORS[i],0.04);
+    ctx.fillRect(laneX(i)-LANE_W/2,0,LANE_W,H);
+  }
+  for(var i=0;i<=4;i++){
+    ctx.strokeStyle='rgba(255,255,255,0.07)';
+    ctx.lineWidth=1; ctx.beginPath();
+    ctx.moveTo(sx+LANE_W*i,0); ctx.lineTo(sx+LANE_W*i,H); ctx.stroke();
+  }
+  for(var i=0;i<4;i++){
+    var x=laneX(i);
+    ctx.strokeStyle=rgba(COLORS[i],0.4); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(x,hy,34,0,6.28); ctx.stroke();
+    ctx.fillStyle=rgba(COLORS[i],0.1);
+    ctx.beginPath(); ctx.arc(x,hy,34,0,6.28); ctx.fill();
+    ctx.font='bold 18px sans-serif'; ctx.fillStyle=rgba(COLORS[i],0.8);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(KEYS[i],x,hy); ctx.textBaseline='alphabetic';
+  }
+  // Dim overlay
+  ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(0,0,W,H);
+  // Countdown number
+  var elapsed=(Date.now()-countdownStart)/1000;
+  var remaining=3-elapsed;
+  var num=Math.ceil(remaining);
+  var scale=1+(remaining%1)*0.4; // pulse effect
+  var alpha=0.4+(remaining%1)*0.6;
+  ctx.save();
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.globalAlpha=alpha;
+  ctx.font='bold '+(Math.round(120*scale))+'px sans-serif';
+  ctx.fillStyle=song.color;
+  ctx.shadowColor=song.color; ctx.shadowBlur=60;
+  ctx.fillText(num>0?num:'GO!',W/2,H/2);
+  ctx.shadowBlur=0; ctx.restore();
+  // Song name
+  ctx.textAlign='center'; ctx.font='bold 22px sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillText(song.name,W/2,H/2+100);
+}
+
+// ── 메뉴 카드 좌표 저장용 ─────────────────────
+var menuCards=[]; // [{x,y,w,h,idx}]
+var menuAddBtn={x:0,y:0,w:0,h:0};
+var hoverCard=-1;
+
+// ── Draw Menu ─────────────────────────────────
+function drawMenu(){
+  var grd=ctx.createLinearGradient(0,0,0,H);
+  grd.addColorStop(0,'#0d0020'); grd.addColorStop(1,'#000008');
+  ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+  for(var i=0;i<4;i++){
+    ctx.fillStyle=rgba(COLORS[i],0.04);
+    ctx.fillRect(laneX(i)-LANE_W/2,0,LANE_W,H);
+  }
+  // Title
+  ctx.textAlign='center';
+  ctx.font='bold 80px sans-serif'; ctx.fillStyle='#fff';
+  ctx.shadowColor='#ff44aa'; ctx.shadowBlur=50;
+  ctx.fillText('BEAT ZONE',W/2,H/2-150); ctx.shadowBlur=0;
+
+  // Song cards (scrollable if many)
+  var cW=170,cH=100,gap=18;
+  var allItems=SONGS.length+1; // +1 for add button
+  var tot=allItems*(cW+gap)-gap;
+  var sx=W/2-tot/2;
+  if(sx<20) sx=20; // prevent overflow left
+
+  ctx.font='bold 20px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.45)';
+  ctx.fillText(SONGS.length>0?'곡을 클릭하세요':'+ 버튼을 눌러 곡을 추가하세요',W/2,H/2-65);
+
+  menuCards=[];
+  for(var i=0;i<SONGS.length;i++){
+    var s=SONGS[i], cx=sx+i*(cW+gap), cy=H/2-40;
+    var hov=hoverCard===i;
+    menuCards.push({x:cx,y:cy,w:cW,h:cH,idx:i});
+    ctx.save();
+    ctx.shadowColor=s.color; ctx.shadowBlur=hov?30:0;
+    ctx.globalAlpha=hov?1:0.65;
+    ctx.fillStyle=hov?rgba(s.color,0.3):'rgba(0,0,0,0.45)';
+    ctx.strokeStyle=s.color; ctx.lineWidth=hov?3:1;
+    ctx.beginPath(); rr(cx,cy,cW,cH,14); ctx.fill(); ctx.stroke();
+    ctx.globalAlpha=hov?1:0.65;
+    ctx.font='bold 17px sans-serif'; ctx.fillStyle=s.color;
+    ctx.fillText(s.name,cx+cW/2,cy+38);
+    ctx.font='12px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.7)';
+    ctx.fillText(s.sub,cx+cW/2,cy+60);
+    // 최고 점수 표시
+    var best=getBestScore(s);
+    if(best){
+      ctx.font='bold 10px sans-serif'; ctx.fillStyle='#ffdd44';
+      ctx.fillText('BEST '+best.score+' ('+best.grade+')',cx+cW/2,cy+80);
+    } else if(s.isYT){
+      ctx.font='10px sans-serif'; ctx.fillStyle='rgba(255,80,80,0.7)';
+      ctx.fillText('▶ YouTube',cx+cW/2,cy+80);
+    }
+    ctx.restore();
+  }
+
+  // + 곡 추가 버튼
+  var addX=sx+SONGS.length*(cW+gap), addY=H/2-40;
+  menuAddBtn={x:addX,y:addY,w:cW,h:cH};
+  var addHov=hoverCard===-2;
+  ctx.save();
+  ctx.globalAlpha=addHov?0.9:0.4;
+  ctx.fillStyle=addHov?'rgba(255,255,255,0.12)':'rgba(0,0,0,0.3)';
+  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=addHov?2:1;
+  ctx.setLineDash([6,4]);
+  ctx.beginPath(); rr(addX,addY,cW,cH,14); ctx.fill(); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font='bold 36px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillText('+',addX+cW/2,addY+45);
+  ctx.font='12px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.fillText('곡 추가',addX+cW/2,addY+75);
+  ctx.restore();
+
+  ctx.textAlign='center'; ctx.globalAlpha=1;
+  ctx.font='14px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.25)';
+  ctx.fillText(KEYS.join('  ')+' 키로 박자에 맞춰 노트를 처리하세요',W/2,H/2+120);
+
+  // 닉네임 표시 (top-left)
+  ctx.textAlign='left';
+  ctx.font='bold 14px sans-serif'; ctx.fillStyle='#ffcc00';
+  ctx.fillText('👤 '+(playerNick||'닉네임 설정'),16,36);
+  drawBtn(16,46,90,28,'닉네임 변경',BTN_NICK_HOVER,'#ffcc00');
+
+  // Settings button (top-right of menu)
+  drawBtn(W-130,20,114,40,'⚙ 설정',BTN_MENU_SET_HOVER,'#aabbff');
+}
+
+// ── Draw Difficulty Select ────────────────────
+var diffBtns=[];
+var diffBackBtn={x:0,y:0,w:0,h:0};
+function drawDifficulty(){
+  var grd=ctx.createLinearGradient(0,0,0,H);
+  grd.addColorStop(0,'#0d0020'); grd.addColorStop(1,'#000008');
+  ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+  for(var i=0;i<4;i++){
+    ctx.fillStyle=rgba(COLORS[i],0.04);
+    ctx.fillRect(laneX(i)-LANE_W/2,0,LANE_W,H);
+  }
+
+  var s=SONGS[selSong];
+  ctx.textAlign='center';
+
+  // 곡 이름
+  ctx.font='bold 28px sans-serif'; ctx.fillStyle=s.color;
+  ctx.shadowColor=s.color; ctx.shadowBlur=20;
+  ctx.fillText(s.name,W/2,H/2-180);
+  ctx.shadowBlur=0;
+  ctx.font='14px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.fillText(s.sub,W/2,H/2-150);
+
+  // 난이도 타이틀
+  ctx.font='bold 22px sans-serif'; ctx.fillStyle='#fff';
+  ctx.fillText('난이도 선택',W/2,H/2-100);
+
+  // 난이도 버튼들
+  diffBtns=[];
+  var bW=180,bH=70,gap=16;
+  var totalW=DIFFICULTIES.length*(bW+gap)-gap;
+  var startX=W/2-totalW/2;
+
+  for(var i=0;i<DIFFICULTIES.length;i++){
+    var d=DIFFICULTIES[i];
+    var bx=startX+i*(bW+gap), by=H/2-60;
+    diffBtns.push({x:bx,y:by,w:bW,h:bH,idx:i});
+    var hov=diffHover===i;
+
+    ctx.save();
+    ctx.shadowColor=d.color; ctx.shadowBlur=hov?25:0;
+    ctx.globalAlpha=hov?1:0.6;
+    ctx.fillStyle=hov?rgba(d.color,0.25):'rgba(0,0,0,0.45)';
+    ctx.strokeStyle=d.color; ctx.lineWidth=hov?3:1.5;
+    ctx.beginPath(); rr(bx,by,bW,bH,14); ctx.fill(); ctx.stroke();
+
+    ctx.font='bold 20px sans-serif'; ctx.fillStyle=d.color;
+    ctx.fillText(d.name,bx+bW/2,by+30);
+    ctx.font='12px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.6)';
+    ctx.fillText(d.desc,bx+bW/2,by+52);
+
+    // 해당 난이도 최고점수
+    var key=s.name+'_'+d.name;
+    var bestD=getDiffBest(s,d.name);
+    if(bestD){
+      ctx.font='bold 10px sans-serif'; ctx.fillStyle='#ffdd44';
+      ctx.fillText('BEST '+bestD.score+' ('+bestD.grade+')',bx+bW/2,by+66);
+    }
+    ctx.restore();
+  }
+
+  // 뒤로가기 버튼
+  var bbW=100,bbH=40,bbX=W/2-bbW/2,bbY=H/2+40;
+  diffBackBtn={x:bbX,y:bbY,w:bbW,h:bbH};
+  ctx.save();
+  ctx.globalAlpha=0.5;
+  ctx.fillStyle='rgba(255,255,255,0.08)';
+  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1;
+  ctx.beginPath(); rr(bbX,bbY,bbW,bbH,10); ctx.fill(); ctx.stroke();
+  ctx.font='14px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillText('← 뒤로',bbX+bbW/2,bbY+26);
+  ctx.restore();
+}
+
+function getDiffBest(s,diffName){
+  var key='beatzone_rank_'+s.name+'_'+diffName;
+  try{
+    var d=JSON.parse(localStorage.getItem(key));
+    if(d&&d.length>0) return d[0];
+  }catch(e){}
+  return null;
+}
+
+// ── Draw Game ─────────────────────────────────
+function drawGame(){
+  if(song.isYT){
+    // 유튜브 영상 위에 반투명 어둠
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    ctx.fillRect(0,0,W,H);
+  } else {
+    var grd=ctx.createLinearGradient(0,0,0,H);
+    grd.addColorStop(0,song.bgTop); grd.addColorStop(1,song.bgBot);
+    ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+  }
+
+  var hy=hitY(), sx=(W-LANE_W*4)/2;
+
+  // Lane shading
+  for(var i=0;i<4;i++){
+    ctx.fillStyle=rgba(COLORS[i],0.04);
+    ctx.fillRect(laneX(i)-LANE_W/2,0,LANE_W,H);
+  }
+  // Lane lines
+  for(var i=0;i<=4;i++){
+    ctx.strokeStyle='rgba(255,255,255,0.07)';
+    ctx.lineWidth=1; ctx.beginPath();
+    ctx.moveTo(sx+LANE_W*i,0); ctx.lineTo(sx+LANE_W*i,H); ctx.stroke();
+  }
+  // Lane flash
+  for(var i=0;i<4;i++){
+    if(laneFlash[i]>0){
+      ctx.fillStyle=rgba(COLORS[i],laneFlash[i]/12*0.3);
+      ctx.fillRect(sx+LANE_W*i,0,LANE_W,H);
+    }
+  }
+  // Hit circles
+  for(var i=0;i<4;i++){
+    var x=laneX(i);
+    ctx.strokeStyle=rgba(COLORS[i],0.5); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(x,hy,34,0,6.28); ctx.stroke();
+    ctx.fillStyle=rgba(COLORS[i],0.12);
+    ctx.beginPath(); ctx.arc(x,hy,34,0,6.28); ctx.fill();
+    ctx.font='bold 18px sans-serif'; ctx.fillStyle=rgba(COLORS[i],0.85);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(KEYS[i],x,hy); ctx.textBaseline='alphabetic';
+  }
+  // Hit line
+  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(sx,hy); ctx.lineTo(sx+LANE_W*4,hy); ctx.stroke();
+
+  // Particles
+  for(var i=0;i<particles.length;i++){
+    var p=particles[i];
+    ctx.globalAlpha=p.life/p.maxLife;
+    ctx.fillStyle=p.color; ctx.shadowColor=p.color; ctx.shadowBlur=8;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size*(p.life/p.maxLife),0,6.28); ctx.fill();
+  }
+  ctx.globalAlpha=1; ctx.shadowBlur=0;
+
+  // Notes
+  for(var i=0;i<pool.length;i++){
+    var n=pool[i]; if(n.hit) continue;
+    var col=COLORS[n.lane], nx=laneX(n.lane), sz=26;
+    ctx.save();
+    ctx.globalAlpha=n.missed?0.3:1;
+    ctx.shadowColor=col; ctx.shadowBlur=n.missed?0:20;
+    ctx.fillStyle=col;
+    ctx.beginPath(); rr(nx-sz,n.y-sz*0.4,sz*2,sz*0.8,8); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.28)';
+    ctx.beginPath(); rr(nx-sz+3,n.y-sz*0.4+3,sz*2-6,sz*0.22,4); ctx.fill();
+    ctx.shadowBlur=0; ctx.restore();
+  }
+
+  // HUD
+  ctx.textAlign='center';
+  ctx.font='bold 32px sans-serif'; ctx.fillStyle='#fff';
+  ctx.shadowColor='rgba(0,0,0,0.8)'; ctx.shadowBlur=8;
+  ctx.fillText(score,W/2,46); ctx.shadowBlur=0;
+  if(combo>1){
+    ctx.font='bold '+(20+Math.min(combo,30))+'px sans-serif';
+    ctx.fillStyle='#ffff44'; ctx.shadowColor='#ffcc00'; ctx.shadowBlur=14;
+    ctx.fillText(combo+' COMBO',W/2,82); ctx.shadowBlur=0;
+  }
+  if(judgeDisp.life>0){
+    ctx.globalAlpha=judgeDisp.life/40;
+    ctx.font='bold 38px sans-serif';
+    ctx.fillStyle=judgeDisp.color; ctx.shadowColor=judgeDisp.color; ctx.shadowBlur=18;
+    ctx.fillText(judgeDisp.txt,W/2,H/2); ctx.shadowBlur=0; ctx.globalAlpha=1;
+  }
+  for(var i=0;i<hitFx.length;i++){
+    var h=hitFx[i];
+    ctx.globalAlpha=h.life/40;
+    ctx.font='bold 15px sans-serif'; ctx.fillStyle=h.color;
+    ctx.fillText(h.txt,h.x,h.y);
+  }
+  ctx.globalAlpha=1;
+  // Song info
+  ctx.textAlign='left'; ctx.font='bold 16px sans-serif';
+  ctx.fillStyle=rgba(song.color,0.9); ctx.fillText(song.name,16,26);
+  ctx.font='13px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.fillText(song.sub,16,46);
+  // 난이도 표시
+  var curDiff=DIFFICULTIES[selDifficulty];
+  ctx.font='bold 12px sans-serif'; ctx.fillStyle=curDiff.color;
+  ctx.fillText('[ '+curDiff.name+' ]',16+ctx.measureText(song.sub).width+12,46);
+  // Stats
+  ctx.textAlign='right'; ctx.font='14px sans-serif';
+  ctx.fillStyle='#ffff44'; ctx.fillText('✦ '+counts.PERFECT,W-16,26);
+  ctx.fillStyle='#44ff88'; ctx.fillText('● '+counts.GOOD,W-16,46);
+  ctx.fillStyle='#ff4455'; ctx.fillText('✕ '+counts.MISS,W-16,66);
+  // Progress bar
+  var last=song.beatmap[song.beatmap.length-1];
+  var prog=Math.min(1,(AC.currentTime-songStartAC)/(last.hitT+2));
+  ctx.fillStyle='rgba(255,255,255,0.08)'; ctx.fillRect(0,H-4,W,4);
+  ctx.fillStyle=rgba(song.color,0.7); ctx.fillRect(0,H-4,W*prog,4);
+  // Exit button (top-left, 곡명 아래)
+  drawBtn(14,58,100,34,'← 나가기',BTN_EXIT_HOVER,'#ff4466');
+  // Settings button (top-right, stats 아래)
+  drawBtn(W-114,76,100,34,'⚙ 설정',BTN_SET_HOVER,'#aabbff');
+}
+var BTN_EXIT_HOVER=false, BTN_SET_HOVER=false, BTN_MENU_SET_HOVER=false, BTN_NICK_HOVER=false;
+function drawBtn(x,y,w,h,label,hovered,accent){
+  ctx.save();
+  ctx.globalAlpha=hovered?1:0.7;
+  ctx.fillStyle=hovered?rgba(accent||'#ffffff',0.25):'rgba(0,0,0,0.65)';
+  ctx.strokeStyle=hovered?accent:'rgba(255,255,255,0.35)';
+  ctx.lineWidth=hovered?2:1;
+  ctx.shadowColor=hovered?(accent||'#fff'):'transparent';
+  ctx.shadowBlur=hovered?12:0;
+  ctx.beginPath(); rr(x,y,w,h,10); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.font='bold 14px sans-serif'; ctx.fillStyle=hovered?'#fff':'rgba(255,255,255,0.85)';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(label,x+w/2,y+h/2);
+  ctx.restore();
+}
+
+// ── Draw Result ───────────────────────────────
+function drawResult(){
+  var grd=ctx.createLinearGradient(0,0,0,H);
+  grd.addColorStop(0,'#0d0020'); grd.addColorStop(1,'#000008');
+  ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(0,0,W,H);
+
+  var tot=counts.PERFECT+counts.GOOD+counts.MISS;
+  var acc=tot>0?Math.round((counts.PERFECT+counts.GOOD*0.5)/tot*100):0;
+  var grade=acc>=95?'S':acc>=85?'A':acc>=70?'B':acc>=50?'C':'D';
+  var gcol=acc>=90?'#ffff44':acc>=70?'#44ff88':'#ff8844';
+
+  // 좌측: 결과
+  var lx=W/2-180;
+  ctx.textAlign='center';
+  ctx.font='bold 80px sans-serif'; ctx.fillStyle=gcol;
+  ctx.shadowColor=gcol; ctx.shadowBlur=30;
+  ctx.fillText(grade,lx,H/2-100); ctx.shadowBlur=0;
+
+  ctx.font='bold 32px sans-serif'; ctx.fillStyle='#fff';
+  ctx.fillText(score,lx,H/2-45);
+
+  var curDiff=DIFFICULTIES[selDifficulty];
+  ctx.font='bold 14px sans-serif'; ctx.fillStyle=curDiff.color;
+  ctx.fillText(curDiff.name,lx,H/2-18);
+  ctx.font='16px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillText('정확도 '+acc+'%  |  COMBO '+maxCombo,lx,H/2);
+
+  ctx.font='15px sans-serif';
+  ctx.fillStyle='#ffff44'; ctx.fillText('PERFECT '+counts.PERFECT,lx,H/2+25);
+  ctx.fillStyle='#44ff88'; ctx.fillText('GOOD '+counts.GOOD,lx,H/2+48);
+  ctx.fillStyle='#ff4455'; ctx.fillText('MISS '+counts.MISS,lx,H/2+71);
+
+  // 우측: 온라인 랭킹
+  var rx=W/2+180;
+  ctx.font='bold 20px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.fillText('🌐 ONLINE RANKING',rx,H/2-125);
+
+  if(onlineRanksLoading){
+    ctx.font='14px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.4)';
+    ctx.fillText('불러오는 중...',rx,H/2-60);
+  } else {
+    ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(rx-140,H/2-110); ctx.lineTo(rx+140,H/2-110); ctx.stroke();
+
+    for(var i=0;i<7;i++){
+      var ry=H/2-88+i*32;
+      var isMe=i===lastRankPos;
+      if(lastRanks[i]){
+        var r=lastRanks[i];
+        if(isMe){
+          ctx.fillStyle='rgba(255,255,100,0.12)';
+          ctx.beginPath(); rr(rx-140,ry-12,280,28,6); ctx.fill();
+        }
+        // 순위
+        ctx.textAlign='left';
+        ctx.font='bold 14px sans-serif';
+        ctx.fillStyle=i===0?'#ffdd44':i===1?'#cccccc':i===2?'#cc8844':'rgba(255,255,255,0.4)';
+        ctx.fillText((i+1)+'.',rx-130,ry+5);
+        // 등급
+        var gc2=r.acc>=90?'#ffff44':r.acc>=70?'#44ff88':'#ff8844';
+        ctx.fillStyle=gc2; ctx.font='bold 13px sans-serif';
+        ctx.fillText(r.grade,rx-105,ry+5);
+        // 닉네임
+        ctx.fillStyle=isMe?'#ffcc00':'rgba(255,255,255,0.8)';
+        ctx.font=(isMe?'bold ':'')+'13px sans-serif';
+        ctx.fillText((r.nick||'???').substring(0,8),rx-78,ry+5);
+        // 점수
+        ctx.textAlign='right';
+        ctx.fillStyle=isMe?'#fff':'rgba(255,255,255,0.6)';
+        ctx.font=(isMe?'bold ':'')+'13px sans-serif';
+        ctx.fillText(r.score.toLocaleString(),rx+100,ry+5);
+        // 정확도
+        ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.font='11px sans-serif';
+        ctx.fillText(r.acc+'%',rx+135,ry+5);
+      } else {
+        ctx.textAlign='left';
+        ctx.font='13px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.12)';
+        ctx.fillText((i+1)+'.  ---',rx-130,ry+5);
+      }
+    }
+  }
+  ctx.textAlign='center';
+  if(lastRankPos===0){
+    ctx.font='bold 18px sans-serif'; ctx.fillStyle='#ffdd44';
+    ctx.shadowColor='#ffdd44'; ctx.shadowBlur=15;
+    ctx.fillText('🎉 NEW #1!',rx,H/2+160); ctx.shadowBlur=0;
+  }
+
+  ctx.font='bold 22px sans-serif';
+  ctx.fillStyle='rgba(255,255,255,'+(0.5+Math.sin(Date.now()*0.003)*0.4)+')';
+  ctx.fillText('[ Enter 또는 클릭으로 메뉴 ]',W/2,H/2+170);
+}
+
+// ── Main loop ─────────────────────────────────
+function loop(){
+  update();
+  if(state==='menu') drawMenu();
+  else if(state==='difficulty') drawDifficulty();
+  else if(state==='countdown') drawCountdown();
+  else if(state==='play') drawGame();
+  else drawResult();
+  requestAnimationFrame(loop);
+}
+
+// ── Input ─────────────────────────────────────
+var ytModalOpen=false;
+window.addEventListener('keydown',function(e){
+  if(rebindLane>=0) return;
+  if(settingsOpen||ytModalOpen) return; // 모달 열려있으면 키 이벤트 무시 (복붙 허용)
+  if(state==='menu'){
+    if(e.code==='ArrowLeft')  selSong=(selSong-1+SONGS.length)%SONGS.length;
+    if(e.code==='ArrowRight') selSong=(selSong+1)%SONGS.length;
+    if((e.code==='Enter'||e.code==='Space')&&SONGS.length>0){ state='difficulty'; diffHover=-1; }
+    e.preventDefault(); return;
+  }
+  if(state==='difficulty'){
+    if(e.code==='Escape') state='menu';
+    if(e.code==='Digit1') { selDifficulty=0; startGame(); }
+    if(e.code==='Digit2') { selDifficulty=1; startGame(); }
+    if(e.code==='Digit3') { selDifficulty=2; startGame(); }
+    if(e.code==='Digit4') { selDifficulty=3; startGame(); }
+    e.preventDefault(); return;
+  }
+  if(state==='result'){
+    if(e.code==='Enter'||e.code==='Space') state='menu'; return;
+  }
+  if(state==='play'){
+    for(var i=0;i<CODES.length;i++) if(e.code===CODES[i]) judge(i);
+    if(e.code==='Escape') endGame();
+    e.preventDefault();
+  }
+});
+
+// Mouse hover for buttons
+c.addEventListener('mousemove',function(e){
+  var x=e.clientX,y=e.clientY;
+  BTN_MENU_SET_HOVER=false; BTN_EXIT_HOVER=false; BTN_SET_HOVER=false; BTN_NICK_HOVER=false;
+  hoverCard=-1;
+  if(state==='menu'){
+    BTN_MENU_SET_HOVER=(x>=W-130&&x<=W-16&&y>=20&&y<=60);
+    BTN_NICK_HOVER=(x>=16&&x<=106&&y>=46&&y<=74);
+    for(var i=0;i<menuCards.length;i++){
+      var mc=menuCards[i];
+      if(x>=mc.x&&x<=mc.x+mc.w&&y>=mc.y&&y<=mc.y+mc.h){ hoverCard=mc.idx; break; }
+    }
+    if(menuAddBtn&&x>=menuAddBtn.x&&x<=menuAddBtn.x+menuAddBtn.w&&y>=menuAddBtn.y&&y<=menuAddBtn.y+menuAddBtn.h) hoverCard=-2;
+  }
+  if(state==='difficulty'){
+    diffHover=-1;
+    for(var i=0;i<diffBtns.length;i++){
+      var db=diffBtns[i];
+      if(x>=db.x&&x<=db.x+db.w&&y>=db.y&&y<=db.y+db.h){ diffHover=db.idx; break; }
+    }
+  }
+  if(state==='play'){
+    BTN_EXIT_HOVER=(x>=14&&x<=114&&y>=58&&y<=92);
+    BTN_SET_HOVER=(x>=W-114&&x<=W-14&&y>=76&&y<=110);
+  }
+});
+
+c.addEventListener('click',function(e){
+  var x=e.clientX,y=e.clientY;
+  if(state==='menu'){
+    // 닉네임 변경 버튼
+    if(x>=16&&x<=106&&y>=46&&y<=74){ showNickModal(); return; }
+    // Settings button
+    if(x>=W-130&&x<=W-16&&y>=20&&y<=60){ openSettings(); return; }
+    // 곡 카드 클릭 → 난이도 선택 화면으로
+    for(var i=0;i<menuCards.length;i++){
+      var mc=menuCards[i];
+      if(x>=mc.x&&x<=mc.x+mc.w&&y>=mc.y&&y<=mc.y+mc.h){
+        selSong=mc.idx; state='difficulty'; diffHover=-1; return;
+      }
+    }
+    // + 곡 추가 버튼
+    if(x>=menuAddBtn.x&&x<=menuAddBtn.x+menuAddBtn.w&&y>=menuAddBtn.y&&y<=menuAddBtn.y+menuAddBtn.h){
+      openYTModal(); return;
+    }
+    return;
+  }
+  if(state==='difficulty'){
+    // 난이도 버튼 클릭
+    for(var i=0;i<diffBtns.length;i++){
+      var db=diffBtns[i];
+      if(x>=db.x&&x<=db.x+db.w&&y>=db.y&&y<=db.y+db.h){
+        selDifficulty=db.idx; startGame(); return;
+      }
+    }
+    // 뒤로가기
+    if(x>=diffBackBtn.x&&x<=diffBackBtn.x+diffBackBtn.w&&y>=diffBackBtn.y&&y<=diffBackBtn.y+diffBackBtn.h){
+      state='menu'; return;
+    }
+    return;
+  }
+  if(state==='result'){ state='menu'; return; }
+  if(state==='play'){
+    if(x>=14&&x<=114&&y>=58&&y<=92){ endGame(); return; }
+    if(x>=W-114&&x<=W-14&&y>=76&&y<=110){ openSettings(); return; }
+    if(settingsOpen) return;
+    var lane=Math.floor((x-(W-LANE_W*4)/2)/LANE_W);
+    if(lane>=0&&lane<4) judge(lane);
+  }
+});
+
+// ── Settings Panel ────────────────────────────
+function openSettings(){
+  settingsOpen=true;
+  document.getElementById('sp').style.display='block';
+}
+function closeSettings(){
+  settingsOpen=false;
+  document.getElementById('sp').style.display='none';
+}
+// Build theme buttons
+(function(){
+  var wrap=document.getElementById('theme-btns');
+  for(var i=0;i<THEMES.length;i++){
+    (function(idx){
+      var btn=document.createElement('button');
+      btn.className='th-btn'+(idx===0?' active':'');
+      btn.textContent=THEMES[idx].name;
+      btn.style.borderColor=THEMES[idx].cols[0];
+      btn.onclick=function(){
+        currentTheme=idx;
+        for(var k=0;k<4;k++) COLORS[k]=THEMES[idx].cols[k];
+        document.querySelectorAll('.th-btn').forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+      };
+      wrap.appendChild(btn);
+    })(i);
+  }
+})();
+// Volume sliders
+(function(){
+  var bv=document.getElementById('bgm-vol');
+  var sv=document.getElementById('sfx-vol');
+  var bvl=document.getElementById('bgm-val');
+  var svl=document.getElementById('sfx-val');
+  bv.oninput=function(){ bgmGain.gain.value=bv.value/100; bvl.textContent=bv.value; };
+  sv.oninput=function(){ sfxGain.gain.value=sv.value/100; svl.textContent=sv.value; };
+  document.getElementById('sp-close').onclick=closeSettings;
+})();
+
+// ── Key Rebinding ─────────────────────────────
+var rebindLane=-1;
+(function(){
+  var btns=document.querySelectorAll('#key-binds .key-btn');
+  btns.forEach(function(btn){
+    btn.addEventListener('click',function(){
+      // Clear previous waiting
+      btns.forEach(function(b){ b.classList.remove('waiting'); });
+      var lane=parseInt(btn.getAttribute('data-lane'));
+      rebindLane=lane;
+      btn.classList.add('waiting');
+      btn.textContent='...';
+    });
+  });
+})();
+
+function codeToLabel(code){
+  // KeyA→A, Digit1→1, Space→SPACE, etc.
+  if(code.startsWith('Key')) return code.slice(3);
+  if(code.startsWith('Digit')) return code.slice(5);
+  if(code==='Space') return 'SPACE';
+  if(code==='ArrowUp') return '↑';
+  if(code==='ArrowDown') return '↓';
+  if(code==='ArrowLeft') return '←';
+  if(code==='ArrowRight') return '→';
+  if(code.startsWith('Semicolon')) return ';';
+  if(code.startsWith('Quote')) return "'";
+  if(code.startsWith('Comma')) return ',';
+  if(code.startsWith('Period')) return '.';
+  if(code.startsWith('Slash')) return '/';
+  if(code.startsWith('Bracket')) return code==='BracketLeft'?'[':']';
+  return code;
+}
+
+// Override keydown to handle rebinding
+window.addEventListener('keydown',function(e){
+  if(rebindLane>=0){
+    e.preventDefault(); e.stopPropagation();
+    // Don't allow Escape for rebind
+    if(e.code==='Escape'){ cancelRebind(); return; }
+    // Set the new key
+    CODES[rebindLane]=e.code;
+    KEYS[rebindLane]=codeToLabel(e.code);
+    // Update button text
+    var btns=document.querySelectorAll('#key-binds .key-btn');
+    btns[rebindLane].textContent=KEYS[rebindLane];
+    btns[rebindLane].classList.remove('waiting');
+    rebindLane=-1;
+    return;
+  }
+}, true); // capture phase to intercept before game keydown
+
+function cancelRebind(){
+  if(rebindLane>=0){
+    var btns=document.querySelectorAll('#key-binds .key-btn');
+    btns[rebindLane].textContent=KEYS[rebindLane];
+    btns[rebindLane].classList.remove('waiting');
+    rebindLane=-1;
+  }
+}
+
+// ══════════════════════════════════════════════
+//  YouTube Integration
+// ══════════════════════════════════════════════
+var ytGamePlayer=null;
+var ytPreviewPlayer=null;
+var ytReady=false;
+
+// YouTube API 콜백
+window.onYouTubeIframeAPIReady=function(){
+  ytReady=true;
+};
+
+function parseYTId(url){
+  var m=url.match(/[?&]v=([^&#]+)/)||url.match(/youtu\.be\/([^?&#]+)/)||url.match(/embed\/([^?&#]+)/);
+  return m?m[1]:null;
+}
+
+function generateBeatmap(bpm, durationSec, diffIdx){
+  diffIdx=diffIdx||1;
+  var diff=DIFFICULTIES[diffIdx];
+  var densityMul=diff.densityMul;
+  var bm=[];
+  var bps=bpm/60;
+  var totalBeats=Math.floor(durationSec*bps);
+  var beatsPerMeasure=4; // 4/4박자
+  var totalMeasures=Math.floor(totalBeats/beatsPerMeasure);
+  function addNote(b,l){ bm.push({b:b,l:l}); }
+
+  // 시드 기반 랜덤 (같은 곡+난이도면 같은 패턴)
+  var seed=bpm*1000+Math.floor(durationSec)+diffIdx*7919;
+  function rng(){ seed=(seed*16807+0)%2147483647; return(seed&0x7fffffff)/2147483647; }
+
+  // ── 곡 구조 자동 생성 (일반적인 팝/록 구조) ──
+  // intro(4) - verse(8) - chorus(8) - verse(8) - chorus(8) - bridge(4) - chorus(8) - outro(4)
+  // 곡 길이에 맞게 스케일링
+  var structure=[];
+  var template=[
+    {type:'intro',  measures:4, intensity:0.3},
+    {type:'verse',  measures:8, intensity:0.5},
+    {type:'prechorus',measures:4, intensity:0.65},
+    {type:'chorus', measures:8, intensity:0.85},
+    {type:'verse',  measures:8, intensity:0.55},
+    {type:'prechorus',measures:4, intensity:0.7},
+    {type:'chorus', measures:8, intensity:0.9},
+    {type:'bridge', measures:4, intensity:0.4},
+    {type:'chorus', measures:8, intensity:1.0},
+    {type:'outro',  measures:4, intensity:0.3}
+  ];
+  var templateTotal=0;
+  for(var i=0;i<template.length;i++) templateTotal+=template[i].measures;
+  var scale=totalMeasures/templateTotal;
+  if(scale<0.5) scale=0.5;
+  for(var i=0;i<template.length;i++){
+    var m=Math.max(2,Math.round(template[i].measures*scale));
+    structure.push({type:template[i].type, measures:m, intensity:template[i].intensity});
+  }
+
+  // ── 박자 패턴 (섹션 타입별) ──
+  // 각 마디(4비트)에 대한 패턴 - intensity에 따라 밀도 조절
+  // 킥 위치: 1, 3 / 스네어: 2, 4 → 이 리듬에 맞춤
+  var kickPattern=[0, 2];      // 1박, 3박 (킥 = 왼쪽 레인 0,1)
+  var snarePattern=[1, 3];     // 2박, 4박 (스네어 = 오른쪽 레인 2,3)
+  var hihatPattern=[0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]; // 8비트 하이햇
+
+  var measureIdx=0;
+  for(var si=0;si<structure.length;si++){
+    var sec=structure[si];
+    var intensity=sec.intensity*densityMul;
+
+    // 섹션별 반복 패턴 생성 (2~4마디 단위로 반복 → 음악적)
+    var patternLen=sec.type==='chorus'?2:sec.type==='verse'?4:2;
+    var sectionPatterns=[];
+
+    for(var p=0;p<patternLen;p++){
+      var mp=[]; // 이 마디의 노트들
+      // 킥 (1박, 3박) - 항상 존재
+      for(var k=0;k<kickPattern.length;k++){
+        var lane=rng()<0.5?0:1; // 왼쪽 두 레인
+        mp.push({offset:kickPattern[k], lane:lane});
+      }
+      // 스네어 (2박, 4박) - intensity 0.4 이상
+      if(intensity>=0.4){
+        for(var s=0;s<snarePattern.length;s++){
+          var lane=rng()<0.5?2:3; // 오른쪽 두 레인
+          mp.push({offset:snarePattern[s], lane:lane});
+        }
+      }
+      // 8비트 하이햇 필 (intensity에 비례해서 추가)
+      if(intensity>=0.6){
+        var hh=hihatPattern.slice();
+        for(var h=0;h<hh.length;h++){
+          // 킥/스네어와 겹치지 않는 위치만
+          var isKick=kickPattern.indexOf(hh[h])>=0;
+          var isSnare=snarePattern.indexOf(hh[h])>=0;
+          if(!isKick&&!isSnare&&rng()<intensity*0.6){
+            var lane=Math.floor(rng()*4);
+            mp.push({offset:hh[h], lane:lane});
+          }
+        }
+      }
+      // 16비트 필 (chorus에서 고강도)
+      if(intensity>=0.85){
+        var sixteenths=[0.25,0.75,1.25,1.75,2.25,2.75,3.25,3.75];
+        for(var x=0;x<sixteenths.length;x++){
+          if(rng()<(intensity-0.7)*0.8){
+            mp.push({offset:sixteenths[x], lane:Math.floor(rng()*4)});
+          }
+        }
+      }
+      // 동시타 (chorus 고강도)
+      if(intensity>=0.8&&rng()<0.3){
+        var dualBeat=rng()<0.5?0:2;
+        mp.push({offset:dualBeat, lane:0});
+        mp.push({offset:dualBeat, lane:3});
+      }
+      sectionPatterns.push(mp);
+    }
+
+    // 섹션의 마디들을 패턴 반복으로 채우기
+    for(var m=0;m<sec.measures;m++){
+      if(measureIdx>=totalMeasures) break;
+      var beatStart=measureIdx*beatsPerMeasure;
+      var pat=sectionPatterns[m%patternLen];
+
+      // 마지막 마디에 필인 (다음 섹션 전환)
+      var isFill=(m===sec.measures-1)&&sec.type!=='outro';
+
+      for(var n=0;n<pat.length;n++){
+        addNote(beatStart+pat[n].offset, pat[n].lane);
+      }
+
+      // 필인: 마지막 1비트에 연타
+      if(isFill&&intensity>=0.5){
+        var fillStart=3;
+        var fillNotes=[0, 0.25, 0.5, 0.75];
+        for(var f=0;f<fillNotes.length;f++){
+          if(rng()<intensity){
+            addNote(beatStart+fillStart+fillNotes[f], f);
+          }
+        }
+      }
+
+      measureIdx++;
+    }
+  }
+
+  // intro 시작 전 2비트 비우기 (여유)
+  var filtered=[];
+  for(var i=0;i<bm.length;i++){
+    if(bm[i].b>=2) filtered.push(bm[i]);
+  }
+  bm=filtered;
+
+  // 중복 제거 (같은 비트+레인)
+  var seen={};
+  var unique=[];
+  for(var i=0;i<bm.length;i++){
+    var key=bm[i].b.toFixed(4)+'_'+bm[i].l;
+    if(!seen[key]){ seen[key]=true; unique.push(bm[i]); }
+  }
+  unique.sort(function(a,b){return a.b-b.b;});
+  return unique;
+}
+
+// ── YT 모달 ─────────────────────────────────
+function openYTModal(){
+  ytModalOpen=true;
+  document.getElementById('yt-modal').style.display='block';
+  document.getElementById('yt-url').value='';
+  document.getElementById('yt-bpm').value='120';
+  document.getElementById('yt-name').value='';
+  document.getElementById('yt-status').style.display='none';
+  document.getElementById('yt-add-btn').textContent='추가하기';
+  document.getElementById('yt-add-btn').disabled=false;
+  document.getElementById('yt-preview-wrap').style.display='none';
+  tapTimes=[];
+}
+function closeYTModal(){
+  ytModalOpen=false;
+  document.getElementById('yt-modal').style.display='none';
+  if(ytPreviewPlayer){ try{ytPreviewPlayer.destroy();}catch(e){} ytPreviewPlayer=null; }
+}
+
+// URL 입력 시 미리보기
+var ytUrlTimer=null;
+document.getElementById('yt-url').addEventListener('input',function(){
+  var self=this;
+  clearTimeout(ytUrlTimer);
+  ytUrlTimer=setTimeout(function(){
+    var vid=parseYTId(self.value);
+    if(!vid||!ytReady) return;
+    document.getElementById('yt-preview-wrap').style.display='block';
+    if(ytPreviewPlayer){ try{ytPreviewPlayer.destroy();}catch(e){} }
+    ytPreviewPlayer=new YT.Player('yt-preview-player',{
+    height:'180', width:'100%', videoId:vid,
+    playerVars:{autoplay:0,controls:1}
+  });
+  },500); // 0.5초 디바운스
+});
+
+// 탭 템포
+var tapTimes=[];
+document.getElementById('yt-tap-btn').addEventListener('click',function(){
+  var now=Date.now();
+  tapTimes.push(now);
+  // 3초 이상 간격이면 리셋
+  if(tapTimes.length>1 && now-tapTimes[tapTimes.length-2]>3000) tapTimes=[now];
+  if(tapTimes.length>=3){
+    var intervals=[];
+    for(var i=1;i<tapTimes.length;i++) intervals.push(tapTimes[i]-tapTimes[i-1]);
+    // 최근 8개만 사용
+    if(intervals.length>8) intervals=intervals.slice(-8);
+    var avg=intervals.reduce(function(a,b){return a+b;},0)/intervals.length;
+    var bpm=Math.round(60000/avg);
+    bpm=Math.max(60,Math.min(300,bpm));
+    document.getElementById('yt-bpm').value=bpm;
+    document.getElementById('yt-tap-info').textContent='감지: '+bpm+' BPM ('+tapTimes.length+'회 탭)';
+  } else {
+    document.getElementById('yt-tap-info').textContent='계속 탭하세요... ('+tapTimes.length+'회)';
+  }
+});
+
+// 곡 추가 - 입력된 길이 사용
+document.getElementById('yt-add-btn').addEventListener('click',function(){
+  var url=document.getElementById('yt-url').value.trim();
+  var vid=parseYTId(url);
+  if(!vid){ alert('올바른 YouTube URL을 입력해주세요.'); return; }
+  var bpm=parseInt(document.getElementById('yt-bpm').value)||120;
+  var name=document.getElementById('yt-name').value.trim()||'YouTube #'+(SONGS.length+1);
+  bpm=Math.max(60,Math.min(300,bpm));
+
+  var addBtn=document.getElementById('yt-add-btn');
+  var statusEl=document.getElementById('yt-status');
+  addBtn.textContent='영상 불러오는 중...';
+  addBtn.disabled=true;
+  statusEl.style.display='block';
+  statusEl.style.background='rgba(100,200,255,0.1)';
+  statusEl.style.color='#44aaff';
+  statusEl.textContent='⏳ 영상 길이를 자동으로 가져오고 있습니다...';
+
+  // 임시 플레이어로 영상 길이 자동 감지
+  var tempDiv=document.createElement('div');
+  tempDiv.id='yt-temp-detect';
+  tempDiv.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;';
+  document.body.appendChild(tempDiv);
+
+  var detectTimeout=setTimeout(function(){
+    // 10초 안에 응답 없으면 타임아웃
+    try{ tempPlayer.destroy(); }catch(e){}
+    if(document.getElementById('yt-temp-detect')) document.getElementById('yt-temp-detect').remove();
+    statusEl.style.background='rgba(255,80,50,0.15)';
+    statusEl.style.color='#ff6644';
+    statusEl.textContent='⚠ 영상을 불러올 수 없습니다. 다른 영상을 시도해주세요.';
+    addBtn.textContent='추가하기';
+    addBtn.disabled=false;
+  },10000);
+
+  var tempPlayer=new YT.Player('yt-temp-detect',{
+    width:'1',height:'1',videoId:vid,
+    playerVars:{autoplay:0,controls:0},
+    events:{
+      onReady:function(ev){
+        clearTimeout(detectTimeout);
+        var dur=ev.target.getDuration();
+        tempPlayer.destroy();
+        if(document.getElementById('yt-temp-detect')) document.getElementById('yt-temp-detect').remove();
+
+        if(!dur||dur<5){
+          statusEl.style.background='rgba(255,80,50,0.15)';
+          statusEl.style.color='#ff6644';
+          statusEl.textContent='⚠ 영상 길이를 가져올 수 없습니다. 다른 영상을 시도해주세요.';
+          addBtn.textContent='추가하기';
+          addBtn.disabled=false;
+          return;
+        }
+
+        var beatmap=generateBeatmap(bpm, dur);
+        var mins=Math.floor(dur/60);
+        var secs=Math.round(dur%60);
+        var durStr=mins+':'+(secs<10?'0':'')+secs;
+
+        SONGS.push({
+          name:name, sub:bpm+' BPM · '+durStr+' · YouTube', bpm:bpm,
+          color:'#ff4444', bgTop:'#1a0000', bgBot:'#080000',
+          isYT:true, ytVideoId:vid, duration:dur,
+          beatmap:beatmap,
+          beat:function(){}
+        });
+
+        addBtn.textContent='추가하기';
+        addBtn.disabled=false;
+        statusEl.style.display='none';
+        closeYTModal();
+      },
+      onError:function(ev){
+        clearTimeout(detectTimeout);
+        try{ tempPlayer.destroy(); }catch(e){}
+        if(document.getElementById('yt-temp-detect')) document.getElementById('yt-temp-detect').remove();
+        var errCode=ev.data;
+        var msg='⚠ ';
+        if(errCode===150||errCode===101) msg+='이 영상은 외부 재생이 차단되어 사용할 수 없습니다.';
+        else if(errCode===2) msg+='잘못된 영상 ID입니다.';
+        else if(errCode===5) msg+='HTML5 플레이어 오류입니다.';
+        else msg+='영상을 불러올 수 없습니다. (오류 '+errCode+')';
+        msg+=' 다른 영상을 시도해주세요.';
+        statusEl.style.background='rgba(255,80,50,0.15)';
+        statusEl.style.color='#ff6644';
+        statusEl.textContent=msg;
+        addBtn.textContent='추가하기';
+        addBtn.disabled=false;
+      }
+    }
+  });
+});
+
+document.getElementById('yt-cancel-btn').addEventListener('click', closeYTModal);
+
+// ── YT 게임 플레이어 관리 ────────────────────
+function createYTGamePlayer(videoId, onReady){
+  if(ytGamePlayer){ try{ytGamePlayer.destroy();}catch(e){} ytGamePlayer=null; }
+  document.getElementById('yt-game-player').innerHTML='<div id="yt-gp-inner"></div>';
+  ytGamePlayer=new YT.Player('yt-gp-inner',{
+    width:''+window.innerWidth, height:''+window.innerHeight,
+    videoId:videoId,
+    playerVars:{autoplay:0, controls:0, disablekb:1, modestbranding:1, rel:0, showinfo:0, iv_load_policy:3},
+    events:{ onReady: function(ev){
+      // iframe을 화면에 꽉 차게
+      var iframe=ev.target.getIframe();
+      iframe.style.width='100vw';
+      iframe.style.height='100vh';
+      iframe.style.objectFit='cover';
+      iframe.style.pointerEvents='none';
+      if(onReady) onReady();
+    }}
+  });
+}
+
+// ── startGame/launchPlay/endGame 수정 (YT 지원) ──
+var _origStartGame=startGame;
+startGame=function(){
+  if(AC.state==='suspended') AC.resume();
+  song = SONGS[selSong];
+  score=0;combo=0;maxCombo=0;
+  counts={PERFECT:0,GOOD:0,MISS:0};
+  pool=[];hitFx=[];particles=[];
+  laneFlash=[0,0,0,0];nextNI=0;
+  judgeDisp={txt:'',color:'#fff',life:0};
+  var bps=song.bpm/60;
+  for(var i=0;i<song.beatmap.length;i++)
+    song.beatmap[i].hitT = song.beatmap[i].b/bps;
+
+  if(song.isYT){
+    document.getElementById('yt-game-player').style.display='block';
+    createYTGamePlayer(song.ytVideoId, function(){
+      countdownStart=Date.now();
+      state='countdown';
+    });
+  } else {
+    countdownStart=Date.now();
+    state='countdown';
+  }
+};
+
+var _origLaunchPlay=launchPlay;
+launchPlay=function(){
+  var lt=(hitY()+30)/NOTE_PPS;
+  if(song.isYT){
+    // 유튜브: 플레이 시작
+    ytGamePlayer.seekTo(0,true);
+    ytGamePlayer.playVideo();
+    songStartAC=AC.currentTime+lt+0.1;
+    // BGM 없음 (유튜브가 재생)
+  } else {
+    songStartAC=AC.currentTime+lt+0.1;
+    startBGM(song, songStartAC);
+  }
+  state='play';
+};
+
+var _origEndGame=endGame;
+endGame=function(){
+  stopBGM();
+  if(song&&song.isYT&&ytGamePlayer){
+    try{ ytGamePlayer.pauseVideo(); }catch(e){}
+    document.getElementById('yt-game-player').style.display='none';
+  }
+  // 랭킹 저장
+  var tot=counts.PERFECT+counts.GOOD+counts.MISS;
+  var acc=tot>0?Math.round((counts.PERFECT+counts.GOOD*0.5)/tot*100):0;
+  var grade=acc>=95?'S':acc>=85?'A':acc>=70?'B':acc>=50?'C':'D';
+  var diffName=song.currentDiff||'NORMAL';
+  lastRanks=saveScore(song, score, acc, grade, maxCombo, diffName);
+  lastRankPos=-1;
+  for(var i=0;i<lastRanks.length;i++){
+    if(lastRanks[i].score===score&&lastRanks[i].date>=Date.now()-1000){ lastRankPos=i; break; }
+  }
+  state='result';
+};
+
+loop();
+</script>
+</body>
+</html>
