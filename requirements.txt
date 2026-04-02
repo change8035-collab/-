@@ -1,2 +1,6 @@
 flask
 yt-dlp
+librosa
+numpy
+imageio-ffmpeg
+gunicorn
