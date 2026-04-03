@@ -153,8 +153,27 @@ def analyze_audio(filepath):
         rms_max = rms.max() if rms.max() > 0 else 1
         rms_norm = rms / rms_max
 
-        # ── 비트 위치에 노트 생성 ──
-        # madmom 비트를 기본으로 사용 (가장 정확)
+        # ── 비트 + onset 합산 (빠른 곡도 정확하게) ──
+        # librosa onset도 감지 (비트 사이 빠른 음 포착)
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+        onset_frames_all = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr,
+                                                       backtrack=True, delta=0.07)
+        onset_times_all = librosa.frames_to_time(onset_frames_all, sr=sr)
+
+        # Madmom 비트 + librosa onset 합치기 (중복 제거)
+        all_times = set()
+        for t in beat_times:
+            all_times.add(round(float(t), 3))
+        for t in onset_times_all:
+            all_times.add(round(float(t), 3))
+        # 너무 가까운 노트 제거 (최소 0.08초 간격)
+        all_times_sorted = sorted(all_times)
+        merged_times = []
+        for t in all_times_sorted:
+            if len(merged_times) == 0 or t - merged_times[-1] >= 0.08:
+                merged_times.append(t)
+
+        beat_set = set(round(float(t), 2) for t in beat_times)
         low_set = set(round(t, 2) for t in onset_low)
         high_set = set(round(t, 2) for t in onset_high)
 
@@ -162,7 +181,7 @@ def analyze_audio(filepath):
         prev_lane = -1
         consecutive = 0
 
-        for t in beat_times:
+        for t in merged_times:
             if t < 0.5 or t > duration - 0.5:
                 continue
 
