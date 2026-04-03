@@ -270,6 +270,11 @@ def add_youtube_song():
         'noprogress': True,
     }
 
+    download_ok = False
+    audio_filename = f'{video_id}.webm'
+    duration = 0
+    title = ''
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -278,22 +283,35 @@ def add_youtube_song():
             name = name or title
             dl_ext = info.get('ext', 'webm')
             audio_filename = f'{video_id}.{dl_ext}'
+            download_ok = True
     except Exception as e:
-        conn.close()
-        return jsonify({'error': f'다운로드 실패: {str(e)}'}), 500
+        # 다운로드 실패해도 곡 추가 가능 (유튜브 iframe으로 재생)
+        print(f'yt-dlp 다운로드 실패 (iframe으로 대체): {e}')
+        # yt-dlp 없이 영상 정보만 가져오기
+        try:
+            with yt_dlp.YoutubeDL({'quiet': True, 'noplaylist': True, 'skip_download': True}) as ydl2:
+                info = ydl2.extract_info(url, download=False)
+                duration = info.get('duration', 0)
+                title = info.get('title', 'Unknown')
+                name = name or title
+        except:
+            pass
 
+    if not name:
+        name = f'YouTube #{video_id[:6]}'
     if not duration or duration < 5:
-        duration = 90
+        duration = 180  # 기본 3분
 
-    # 오디오 분석 (BPM + 노트맵)
+    # 오디오 분석 (BPM + 노트맵) - 다운로드 성공 시만
     import json
-    audio_path = os.path.join(AUDIO_DIR, audio_filename)
-    analysis = analyze_audio(audio_path)
     analyzed_json = None
-    if analysis:
-        bpm = analysis['bpm']
-        duration = analysis['duration']
-        analyzed_json = json.dumps(analysis['notes'])
+    if download_ok:
+        audio_path = os.path.join(AUDIO_DIR, audio_filename)
+        analysis = analyze_audio(audio_path)
+        if analysis:
+            bpm = analysis['bpm']
+            duration = analysis['duration']
+            analyzed_json = json.dumps(analysis['notes'])
 
     # DB에 저장
     bpm = max(60, min(300, bpm))

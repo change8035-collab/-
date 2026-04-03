@@ -220,14 +220,14 @@ function showYTBackground(videoId){
   container.style.zIndex='2';
   document.getElementById('c').style.zIndex='3';
   document.body.style.background='#000';
-  // iframe으로 영상 삽입 (음소거 자동재생 후 JS로 음소거 해제)
-  container.innerHTML='<iframe id="yt-bg-iframe" src="https://www.youtube.com/embed/'+videoId+'?autoplay=1&mute=1&controls=0&loop=1&playlist='+videoId+'&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&enablejsapi=1&origin='+encodeURIComponent(location.origin)+'" style="width:100vw;height:100vh;border:none;pointer-events:none;" allow="autoplay; encrypted-media"></iframe>';
-  // 재생 시작 후 음소거 해제
+  // iframe으로 영상 삽입 (소리 포함 재생 - 사용자 클릭 후이므로 허용됨)
+  container.innerHTML='<iframe id="yt-bg-iframe" src="https://www.youtube.com/embed/'+videoId+'?autoplay=1&mute=0&controls=0&loop=1&playlist='+videoId+'&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&enablejsapi=1&origin='+encodeURIComponent(location.origin)+'" style="width:100vw;height:100vh;border:none;pointer-events:none;" allow="autoplay; encrypted-media; autoplay *"></iframe>';
+  // 혹시 음소거됐을 경우 백업 해제
   setTimeout(function(){
     var iframe=document.getElementById('yt-bg-iframe');
     if(iframe&&iframe.contentWindow){
       iframe.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}','*');
-      iframe.contentWindow.postMessage('{"event":"command","func":"setVolume","args":[80]}','*');
+      iframe.contentWindow.postMessage('{"event":"command","func":"setVolume","args":[100]}','*');
     }
   },1500);
 }
