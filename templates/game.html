@@ -225,15 +225,10 @@ function showYTBackground(videoId){
   container.style.zIndex='2';
   document.getElementById('c').style.zIndex='3';
   document.body.style.background='#000';
-  // iframe으로 영상 삽입 (소리 포함 재생 - 사용자 클릭 후이므로 허용됨)
-  container.innerHTML='<iframe id="yt-bg-iframe" src="https://www.youtube.com/embed/'+videoId+'?autoplay=1&mute=0&controls=0&loop=1&playlist='+videoId+'&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3&enablejsapi=1&origin='+encodeURIComponent(location.origin)+'" style="width:100vw;height:100vh;border:none;pointer-events:none;" allow="autoplay; encrypted-media; autoplay *"></iframe>';
-  // 혹시 음소거됐을 경우 백업 해제
+  // iframe으로 영상 삽입 (음소거 - 오디오는 다운로드 파일로 재생)
+  container.innerHTML='<iframe id="yt-bg-iframe" src="https://www.youtube.com/embed/'+videoId+'?autoplay=1&mute=1&controls=0&loop=1&playlist='+videoId+'&modestbranding=1&showinfo=0&rel=0&iv_load_policy=3" style="width:100vw;height:100vh;border:none;pointer-events:none;" allow="autoplay"></iframe>';
+  // 영상 시작 대기 (배경용이므로 약간 어긋나도 OK)
   setTimeout(function(){
-    var iframe=document.getElementById('yt-bg-iframe');
-    if(iframe&&iframe.contentWindow){
-      iframe.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}','*');
-      iframe.contentWindow.postMessage('{"event":"command","func":"setVolume","args":[100]}','*');
-    }
   },1500);
 }
 function hideYTBackground(){
@@ -2179,31 +2174,14 @@ startGame=function(){
 var _origLaunchPlay=launchPlay;
 launchPlay=function(){
   var lt=(hitY()+30)/NOTE_PPS;
-  if(song.youtube_id){
-    // 유튜브 곡: 영상 먼저 로드 후 재생 시작되면 노트 시작
-    showYTBackground(song.youtube_id);
-    // 영상 로딩 대기 (iframe 로드 + 재생 시작까지)
-    var waitForPlay = function(){
-      var iframe = document.getElementById('yt-bg-iframe');
-      if(iframe){
-        // 영상 로드 후 약간의 딜레이를 두고 노트 시작
-        songStartAC = AC.currentTime + lt + 0.3;
-        state='play';
-      } else {
-        setTimeout(waitForPlay, 100);
-      }
-    };
-    // 2초 후 시작 (영상 로딩 시간 확보)
-    setTimeout(function(){
-      songStartAC = AC.currentTime + lt;
-      state='play';
-    }, 2000);
-  } else {
-    // 로컬 파일: 다운로드 오디오 재생
-    songStartAC=AC.currentTime+lt+0.1;
-    startBGM(song, songStartAC);
-    state='play';
-  }
+  songStartAC=AC.currentTime+lt+0.1;
+
+  // 유튜브 곡이면 배경 영상 표시 (음소거, 시각 효과만)
+  if(song.youtube_id) showYTBackground(song.youtube_id);
+
+  // 오디오는 항상 다운로드 파일로 재생 (정확한 타이밍)
+  startBGM(song, songStartAC);
+  state='play';
 };
 
 var _origEndGame=endGame;
