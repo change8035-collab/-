@@ -4,5 +4,6 @@ librosa
 numpy
 imageio-ffmpeg
 gunicorn
-madmom
-cython
+demucs
+torch
+torchaudio
