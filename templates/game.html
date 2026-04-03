@@ -771,8 +771,10 @@ function startGame(){
   } else {
     song.beatmap=generateBeatmap(song.bpm, dur, selDifficulty);
   }
-  // 난이도에 따른 노트 속도
-  NOTE_PPS=baseNotePPS*diff.speedMul;
+  // BPM + 난이도에 따른 노트 속도
+  // 기준: 120 BPM = baseNotePPS, BPM 높을수록 빠르게
+  var bpmFactor = Math.max(0.7, Math.min(1.5, song.bpm / 120));
+  NOTE_PPS = baseNotePPS * bpmFactor * diff.speedMul;
   song.currentDiff=diff.name;
   score=0;combo=0;maxCombo=0;
   counts={PERFECT:0,GOOD:0,MISS:0};
