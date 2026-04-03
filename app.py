@@ -69,24 +69,23 @@ def parse_youtube_id(url):
     return None
 
 def analyze_audio(filepath):
-    """오디오 파일에서 BPM + 비트/음높이 기반 노트맵 생성"""
+    """Madmom(딥러닝) + librosa로 정확한 비트/온셋 기반 노트맵 생성"""
     try:
-        import librosa
         import numpy as np
         import subprocess
         import tempfile
         print(f'[분석 시작] {filepath}')
 
-        # webm/ogg 등은 librosa가 직접 못 읽으므로 wav로 변환
+        # webm/ogg 등은 wav로 변환
         wav_path = filepath
         tmp_wav = None
-        if filepath.endswith(('.webm', '.ogg', '.m4a', '.opus')):
+        if filepath.endswith(('.webm', '.ogg', '.m4a', '.opus', '.mp3')):
             try:
                 ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
             except:
                 ffmpeg_bin = 'ffmpeg'
             tmp_wav = tempfile.mktemp(suffix='.wav')
-            result = subprocess.run([ffmpeg_bin, '-i', filepath, '-ar', '22050', '-ac', '1', '-f', 'wav', tmp_wav, '-y'],
+            result = subprocess.run([ffmpeg_bin, '-i', filepath, '-ar', '44100', '-ac', '1', '-f', 'wav', tmp_wav, '-y'],
                                     capture_output=True, timeout=60)
             if result.returncode == 0:
                 wav_path = tmp_wav
@@ -94,89 +93,113 @@ def analyze_audio(filepath):
             else:
                 print(f'[변환 실패] {result.stderr.decode()[:200]}')
 
-        y, sr = librosa.load(wav_path, sr=22050)
+        # librosa로 기본 정보 로드
+        import librosa
+        y, sr = librosa.load(wav_path, sr=44100)
         duration = librosa.get_duration(y=y, sr=sr)
 
-        # 임시 wav 파일 삭제
-        if tmp_wav and os.path.exists(tmp_wav):
-            os.remove(tmp_wav)
+        # ── Madmom 비트 감지 (딥러닝 기반, 매우 정확) ──
+        beat_times = None
+        bpm = 120
+        try:
+            import madmom
+            # RNNBeatProcessor: 딥러닝으로 비트 확률 계산
+            proc = madmom.features.beats.RNNBeatProcessor()
+            act = proc(wav_path)
+            # DBNBeatTrackingProcessor: 동적 베이지안 네트워크로 비트 위치 확정
+            beat_proc = madmom.features.beats.DBNBeatTrackingProcessor(fps=100)
+            beat_times = beat_proc(act)
+            print(f'[Madmom] 비트 {len(beat_times)}개 감지')
 
-        # BPM 감지
-        tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
-        # tempo가 배열인 경우 처리
-        if hasattr(tempo, '__len__'):
-            tempo = tempo[0]
-        bpm = int(round(float(tempo)))
-        bpm = max(60, min(300, bpm))
+            # BPM 계산 (비트 간격으로)
+            if len(beat_times) > 2:
+                intervals = np.diff(beat_times)
+                median_interval = np.median(intervals)
+                if median_interval > 0:
+                    bpm = int(round(60.0 / median_interval))
+                    bpm = max(60, min(300, bpm))
+        except Exception as e:
+            print(f'[Madmom 실패, librosa 폴백] {e}')
+            # librosa 폴백
+            tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
+            if hasattr(tempo, '__len__'):
+                tempo = tempo[0]
+            bpm = int(round(float(tempo)))
+            bpm = max(60, min(300, bpm))
+            beat_times = librosa.frames_to_time(beat_frames, sr=sr)
 
-        # 온셋 감지 (실제 음이 시작되는 지점)
-        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-        onset_frames = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, backtrack=True)
-        onset_times = librosa.frames_to_time(onset_frames, sr=sr)
+        # ── 주파수 대역별 onset 감지 (레인 배분용) ──
+        # 저음 (킥/베이스) → 레인 0
+        y_low = librosa.effects.preemphasis(y, coef=-0.97)  # 저음 강조
+        onset_low = librosa.onset.onset_detect(y=y_low, sr=sr, units='time',
+                                                 hop_length=512, backtrack=True,
+                                                 pre_max=3, post_max=3, pre_avg=3, post_avg=5, delta=0.15)
 
-        # 스펙트럼 중심 (음 높낮이 대용)
+        # 고음 (하이햇/심벌) → 레인 3
+        y_high = librosa.effects.preemphasis(y, coef=0.97)  # 고음 강조
+        onset_high = librosa.onset.onset_detect(y=y_high, sr=sr, units='time',
+                                                  hop_length=512, backtrack=True,
+                                                  pre_max=3, post_max=3, pre_avg=3, post_avg=5, delta=0.15)
+
+        # 스펙트럼 중심 + RMS (레인 미세 조정용)
         spec_cent = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-        # 정규화 (0~1)
         sc_min, sc_max = spec_cent.min(), spec_cent.max()
         if sc_max > sc_min:
             spec_norm = (spec_cent - sc_min) / (sc_max - sc_min)
         else:
             spec_norm = np.zeros_like(spec_cent)
 
-        # RMS 에너지
         rms = librosa.feature.rms(y=y)[0]
         rms_max = rms.max() if rms.max() > 0 else 1
         rms_norm = rms / rms_max
 
-        # 노트 생성: 온셋마다 음높이→레인, 에너지→강도
-        # 스펙트럼 값을 percentile 기반으로 4등분 (고른 분배)
-        onset_sc_vals = []
-        onset_frames_valid = []
-        onset_times_valid = []
-        onset_en_vals = []
-        for i, t in enumerate(onset_times):
-            if t < 1.0:
-                continue
-            frame = onset_frames[i] if i < len(onset_frames) else len(spec_norm) - 1
-            if frame >= len(spec_norm):
-                frame = len(spec_norm) - 1
-            sc_val = float(spec_norm[frame])
-            en_val = float(rms_norm[min(frame, len(rms_norm)-1)])
-            onset_sc_vals.append(sc_val)
-            onset_frames_valid.append(frame)
-            onset_times_valid.append(t)
-            onset_en_vals.append(en_val)
-
-        # percentile 기반 4분위 (각 레인에 25%씩 배분)
-        if len(onset_sc_vals) > 0:
-            sc_arr = np.array(onset_sc_vals)
-            q25 = np.percentile(sc_arr, 25)
-            q50 = np.percentile(sc_arr, 50)
-            q75 = np.percentile(sc_arr, 75)
-        else:
-            q25 = q50 = q75 = 0.5
+        # ── 비트 위치에 노트 생성 ──
+        # madmom 비트를 기본으로 사용 (가장 정확)
+        low_set = set(round(t, 2) for t in onset_low)
+        high_set = set(round(t, 2) for t in onset_high)
 
         notes = []
         prev_lane = -1
-        for i in range(len(onset_times_valid)):
-            sc_val = onset_sc_vals[i]
-            en_val = onset_en_vals[i]
-            t = onset_times_valid[i]
+        consecutive = 0
 
-            # percentile 기반 레인 배정 (고르게)
-            if sc_val < q25:
-                lane = 0
-            elif sc_val < q50:
-                lane = 1
-            elif sc_val < q75:
-                lane = 2
+        for t in beat_times:
+            if t < 0.5 or t > duration - 0.5:
+                continue
+
+            t_round = round(float(t), 2)
+            frame = librosa.time_to_frames(t, sr=sr, hop_length=512)
+            frame = min(frame, len(spec_norm) - 1)
+
+            sc_val = float(spec_norm[frame]) if frame < len(spec_norm) else 0.5
+            en_val = float(rms_norm[min(frame, len(rms_norm)-1)])
+
+            # 주파수 대역 기반 레인 배정
+            is_low = any(abs(t_round - lt) < 0.05 for lt in low_set)
+            is_high = any(abs(t_round - ht) < 0.05 for ht in high_set)
+
+            if is_low and not is_high:
+                lane = 0 if sc_val < 0.5 else 1  # 저음 → 왼쪽
+            elif is_high and not is_low:
+                lane = 3 if sc_val > 0.5 else 2  # 고음 → 오른쪽
             else:
-                lane = 3
+                # 스펙트럼 기반 배정
+                if sc_val < 0.25:
+                    lane = 0
+                elif sc_val < 0.5:
+                    lane = 1
+                elif sc_val < 0.75:
+                    lane = 2
+                else:
+                    lane = 3
 
-            # 같은 레인이 3번 이상 연속되면 인접 레인으로 이동
+            # 같은 레인 3회 이상 연속 방지
             if lane == prev_lane:
-                shift = 1 if lane < 2 else -1
-                lane = max(0, min(3, lane + shift))
+                consecutive += 1
+                if consecutive >= 2:
+                    lane = (lane + 1 + int(sc_val * 10)) % 4
+                    consecutive = 0
+            else:
+                consecutive = 0
             prev_lane = lane
 
             notes.append({
@@ -185,7 +208,11 @@ def analyze_audio(filepath):
                 'e': round(en_val, 2)
             })
 
-        print(f'[분석 완료] BPM={bpm}, 노트={len(notes)}개, 길이={round(duration)}초')
+        # 임시 wav 파일 삭제
+        if tmp_wav and os.path.exists(tmp_wav):
+            os.remove(tmp_wav)
+
+        print(f'[분석 완료] BPM={bpm}, 노트={len(notes)}개, 길이={round(duration)}초 (Madmom)')
         return {
             'bpm': bpm,
             'duration': round(duration, 1),
@@ -195,6 +222,9 @@ def analyze_audio(filepath):
         print(f'오디오 분석 실패: {e}')
         import traceback
         traceback.print_exc()
+        # 임시 파일 정리
+        if 'tmp_wav' in dir() and tmp_wav and os.path.exists(tmp_wav):
+            os.remove(tmp_wav)
         return None
 
 def song_to_dict(row):

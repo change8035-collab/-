@@ -4,3 +4,5 @@ librosa
 numpy
 imageio-ffmpeg
 gunicorn
+madmom
+cython
