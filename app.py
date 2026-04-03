@@ -69,7 +69,7 @@ def parse_youtube_id(url):
     return None
 
 def analyze_audio(filepath):
-    """Demucs 음원 분리 + librosa onset으로 악기별 정확한 노트맵 생성"""
+    """BeatNet(딥러닝) 비트 감지 + Demucs 4-stem 분리 + onset 분석"""
     try:
         import numpy as np
         import subprocess
@@ -87,7 +87,7 @@ def analyze_audio(filepath):
             except:
                 ffmpeg_bin = 'ffmpeg'
             tmp_wav = tempfile.mktemp(suffix='.wav')
-            result = subprocess.run([ffmpeg_bin, '-i', filepath, '-ar', '44100', '-ac', '2', '-f', 'wav', tmp_wav, '-y'],
+            result = subprocess.run([ffmpeg_bin, '-i', filepath, '-ar', '44100', '-ac', '1', '-f', 'wav', tmp_wav, '-y'],
                                     capture_output=True, timeout=60)
             if result.returncode == 0:
                 wav_path = tmp_wav
@@ -97,20 +97,52 @@ def analyze_audio(filepath):
         y_full, sr = librosa.load(wav_path, sr=44100, mono=True)
         duration = librosa.get_duration(y=y_full, sr=sr)
 
-        # ── Demucs 음원 분리 ──
-        stems = {}  # drums, bass, vocals, other
+        # ══ 1단계: BeatNet으로 정확한 비트/다운비트 감지 ══
+        beat_times = []
+        downbeat_times = []
+        bpm = 120
+        try:
+            from BeatNet.BeatNet import BeatNet
+            estimator = BeatNet(1, mode='offline', inference_model='DBN',
+                               plot=[], thread=False)
+            output = estimator.process(wav_path)
+            # output: [[time, beat_number], ...] - beat_number 1 = downbeat
+            if output is not None and len(output) > 0:
+                for row in output:
+                    t = float(row[0])
+                    beat_num = int(row[1])
+                    beat_times.append(t)
+                    if beat_num == 1:
+                        downbeat_times.append(t)
+                # BPM 계산
+                if len(beat_times) >= 4:
+                    intervals = [beat_times[i+1] - beat_times[i] for i in range(len(beat_times)-1)]
+                    avg_interval = np.median(intervals)
+                    if avg_interval > 0:
+                        bpm = int(round(60.0 / avg_interval))
+                print(f'[BeatNet] 비트 {len(beat_times)}개, 다운비트 {len(downbeat_times)}개, BPM={bpm}')
+        except Exception as e:
+            print(f'[BeatNet] 실패, librosa 폴백: {e}')
+            tempo, beat_frames = librosa.beat.beat_track(y=y_full, sr=sr)
+            if hasattr(tempo, '__len__'):
+                tempo = tempo[0]
+            bpm = int(round(float(tempo)))
+            beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
+
+        bpm = max(60, min(300, bpm))
+
+        # ══ 2단계: Demucs 4-stem 분리 ══
+        stems = {}
         demucs_ok = False
         tmp_demucs_dir = tempfile.mkdtemp()
-
         try:
-            print('[Demucs] 음원 분리 시작...')
+            print('[Demucs] 4-stem 분리 시작...')
             result = subprocess.run(
-                ['python3', '-m', 'demucs', '--two-stems=drums', '-n', 'htdemucs',
+                ['python3', '-m', 'demucs', '-n', 'htdemucs',
                  '--out', tmp_demucs_dir, wav_path],
-                capture_output=True, timeout=300, text=True
+                capture_output=True, timeout=600, text=True
             )
             if result.returncode == 0:
-                # Demucs 출력 폴더 탐색
                 base = os.path.splitext(os.path.basename(wav_path))[0]
                 sep_dir = os.path.join(tmp_demucs_dir, 'htdemucs', base)
                 if os.path.exists(sep_dir):
@@ -118,133 +150,113 @@ def analyze_audio(filepath):
                         stem_path = os.path.join(sep_dir, stem_name)
                         if stem_path.endswith('.wav'):
                             key = stem_name.replace('.wav', '')
-                            stems[key], _ = librosa.load(stem_path, sr=44100, mono=True)
-                    demucs_ok = len(stems) > 0
+                            stems[key], _ = librosa.load(stem_path, sr=sr, mono=True)
+                    demucs_ok = len(stems) >= 2
                     print(f'[Demucs] 분리 완료: {list(stems.keys())}')
             else:
-                print(f'[Demucs] 실패: {result.stderr[:200]}')
+                print(f'[Demucs] 실패: {result.stderr[:300]}')
         except Exception as e:
             print(f'[Demucs] 에러: {e}')
 
+        # ══ 3단계: 각 stem에서 onset 감지 ══
+        def get_onsets(y_track, delta=0.07, min_gap=0.06):
+            """librosa onset detection with 비트 스냅"""
+            onset_env = librosa.onset.onset_strength(y=y_track, sr=sr, hop_length=512)
+            frames = librosa.onset.onset_detect(
+                onset_envelope=onset_env, sr=sr, hop_length=512,
+                backtrack=True, delta=delta, wait=int(min_gap * sr / 512)
+            )
+            times = librosa.frames_to_time(frames, sr=sr, hop_length=512)
+            # 비트 그리드에 스냅 (가장 가까운 비트의 1/4 지점으로)
+            if len(beat_times) >= 2:
+                avg_beat = np.median([beat_times[i+1]-beat_times[i] for i in range(len(beat_times)-1)])
+                grid_res = avg_beat / 4  # 16분음표 그리드
+                snapped = []
+                for t in times:
+                    snapped_t = round(t / grid_res) * grid_res
+                    if len(snapped) == 0 or abs(snapped_t - snapped[-1]) >= grid_res * 0.8:
+                        snapped.append(round(snapped_t, 4))
+                return snapped
+            return [round(float(t), 4) for t in times]
+
+        # 각 stem onset
+        drum_onsets = get_onsets(stems['drums'], delta=0.06, min_gap=0.05) if 'drums' in stems else []
+        vocal_onsets = get_onsets(stems['vocals'], delta=0.12, min_gap=0.12) if 'vocals' in stems else []
+        bass_onsets = get_onsets(stems['bass'], delta=0.10, min_gap=0.10) if 'bass' in stems else []
+        other_onsets = get_onsets(stems['other'], delta=0.08, min_gap=0.08) if 'other' in stems else []
+
         if not demucs_ok:
-            # Demucs 실패 시 4-stem 대신 주파수 대역 분리로 폴백
-            print('[폴백] 주파수 대역 분리 사용')
-            # 저음역 (드럼/베이스)
-            stems['drums'] = librosa.effects.preemphasis(y_full, coef=-0.97)
-            # 나머지 (보컬/멜로디)
-            stems['no_drums'] = librosa.effects.preemphasis(y_full, coef=0.97)
+            # Demucs 실패 시 전체 오디오에서 onset
+            print('[폴백] 전체 오디오 onset 사용')
+            all_onsets = get_onsets(y_full, delta=0.08, min_gap=0.08)
+            # 주파수로 대략 분배
+            for t in all_onsets:
+                frame = min(librosa.time_to_frames(t, sr=sr), len(y_full)//512 - 1)
+                spec = np.abs(np.fft.rfft(y_full[max(0,frame*512-1024):frame*512+1024]))
+                low = np.sum(spec[:len(spec)//4])
+                mid = np.sum(spec[len(spec)//4:len(spec)//2])
+                high = np.sum(spec[len(spec)//2:])
+                total = low + mid + high + 1e-10
+                if low/total > 0.5:
+                    drum_onsets.append(t)
+                elif mid/total > 0.4:
+                    vocal_onsets.append(t)
+                else:
+                    other_onsets.append(t)
 
-        # ── BPM 감지 ──
-        bpm = 120
-        tempo, beat_frames = librosa.beat.beat_track(y=y_full, sr=sr)
-        if hasattr(tempo, '__len__'):
-            tempo = tempo[0]
-        bpm = int(round(float(tempo)))
-        bpm = max(60, min(300, bpm))
+        print(f'[onset] 드럼:{len(drum_onsets)} 보컬:{len(vocal_onsets)} 베이스:{len(bass_onsets)} 멜로디:{len(other_onsets)}')
 
-        # ── 각 트랙별 onset 감지 ──
-        def get_onsets(y_track, delta=0.1, min_gap=0.08):
-            onset_env = librosa.onset.onset_strength(y=y_track, sr=sr)
-            frames = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr,
-                                                 backtrack=True, delta=delta)
-            times = librosa.frames_to_time(frames, sr=sr)
-            # 최소 간격 필터
-            filtered = []
-            for t in times:
-                if len(filtered) == 0 or t - filtered[-1] >= min_gap:
-                    filtered.append(t)
-            return filtered
-
-        # 드럼 트랙 → 레인 0, 1 (킥/스네어)
-        drum_onsets = []
-        if 'drums' in stems:
-            drum_onsets = get_onsets(stems['drums'], delta=0.08, min_gap=0.1)
-            print(f'[드럼] onset {len(drum_onsets)}개')
-
-        # 보컬 트랙 → 레인 2
-        vocal_onsets = []
-        if 'vocals' in stems:
-            vocal_onsets = get_onsets(stems['vocals'], delta=0.15, min_gap=0.15)
-            print(f'[보컬] onset {len(vocal_onsets)}개')
-
-        # 베이스 트랙 → 레인 0
-        bass_onsets = []
-        if 'bass' in stems:
-            bass_onsets = get_onsets(stems['bass'], delta=0.12, min_gap=0.12)
-            print(f'[베이스] onset {len(bass_onsets)}개')
-
-        # 기타/피아노/멜로디 → 레인 3
-        other_onsets = []
-        if 'other' in stems:
-            other_onsets = get_onsets(stems['other'], delta=0.1, min_gap=0.1)
-            print(f'[기타/멜로디] onset {len(other_onsets)}개')
-
-        # no_drums (폴백용)
-        if 'no_drums' in stems and not vocal_onsets and not other_onsets:
-            nd_onsets = get_onsets(stems['no_drums'], delta=0.1, min_gap=0.1)
-            vocal_onsets = nd_onsets[:len(nd_onsets)//2]
-            other_onsets = nd_onsets[len(nd_onsets)//2:]
-
-        # ── 악기별 레인 매핑으로 노트 생성 ──
+        # ══ 4단계: 노트 생성 - 비트 기반 + onset 보강 ══
         notes = []
-        used_times = set()
+        used = set()
 
-        def add_notes(onsets, lane, source):
-            for t in onsets:
-                t_r = round(float(t), 3)
-                if t_r < 0.5 or t_r > duration - 0.5:
-                    continue
-                # 가까운 시간에 이미 노트가 있으면 스킵
-                skip = False
-                for ut in list(used_times):
-                    if abs(ut - t_r) < 0.05:
-                        skip = True
-                        break
-                if not skip:
-                    used_times.add(t_r)
-                    frame = min(librosa.time_to_frames(t_r, sr=sr, hop_length=512),
-                               len(librosa.feature.rms(y=y_full)[0]) - 1)
-                    rms_val = librosa.feature.rms(y=y_full)[0]
-                    en = float(rms_val[frame] / (rms_val.max() or 1)) if frame < len(rms_val) else 0.5
-                    notes.append({
-                        't': t_r,
-                        'l': lane,
-                        'e': round(en, 2)
-                    })
-
-        # 드럼: 킥(강한 비트) → 레인 0, 스네어(약한 비트) → 레인 1
-        for i, t in enumerate(drum_onsets):
-            lane = 0 if i % 2 == 0 else 1  # 교대 배치
+        def add(t, lane):
             t_r = round(float(t), 3)
-            if t_r < 0.5 or t_r > duration - 0.5:
-                continue
-            used_times.add(t_r)
+            if t_r < 0.3 or t_r > duration - 0.3:
+                return
+            # 50ms 이내 중복 방지
+            for u in list(used):
+                if abs(u - t_r) < 0.05:
+                    return
+            used.add(t_r)
             notes.append({'t': t_r, 'l': lane, 'e': 0.8})
 
-        # 베이스 → 레인 0 (드럼과 겹치지 않게)
-        add_notes(bass_onsets, 0, 'bass')
+        # 비트 기반 노트 (뼈대) - 다운비트는 강조
+        for t in beat_times:
+            is_down = any(abs(t - dt) < 0.05 for dt in downbeat_times)
+            add(t, 0 if is_down else 1)
 
-        # 보컬 → 레인 2
-        add_notes(vocal_onsets, 2, 'vocal')
+        # 드럼 onset → 레인 0, 1 (교대)
+        for i, t in enumerate(drum_onsets):
+            add(t, 0 if i % 2 == 0 else 1)
 
-        # 멜로디/기타 → 레인 3
-        add_notes(other_onsets, 3, 'other')
+        # 보컬 onset → 레인 2
+        for t in vocal_onsets:
+            add(t, 2)
+
+        # 베이스 onset → 레인 0
+        for t in bass_onsets:
+            add(t, 0)
+
+        # 멜로디 onset → 레인 3
+        for t in other_onsets:
+            add(t, 3)
 
         # 시간순 정렬
         notes.sort(key=lambda n: n['t'])
 
-        # 같은 레인 연속 3회 이상 방지 (후처리)
+        # 같은 레인 연속 4회 이상 방지
         final_notes = []
         prev_lane = -1
-        consecutive = 0
+        consec = 0
         for n in notes:
             if n['l'] == prev_lane:
-                consecutive += 1
-                if consecutive >= 3:
-                    n['l'] = (n['l'] + 1 + consecutive) % 4
-                    consecutive = 0
+                consec += 1
+                if consec >= 4:
+                    n['l'] = (n['l'] + 1 + consec) % 4
+                    consec = 0
             else:
-                consecutive = 0
+                consec = 0
             prev_lane = n['l']
             final_notes.append(n)
 
@@ -253,7 +265,7 @@ def analyze_audio(filepath):
             os.remove(tmp_wav)
         shutil.rmtree(tmp_demucs_dir, ignore_errors=True)
 
-        method = 'Demucs' if demucs_ok else 'FreqBand'
+        method = 'BeatNet+Demucs' if demucs_ok else 'BeatNet+FreqBand'
         print(f'[분석 완료] BPM={bpm}, 노트={len(final_notes)}개, 길이={round(duration)}초 ({method})')
         return {
             'bpm': bpm,
@@ -486,6 +498,7 @@ def reanalyze_song(song_id):
 
 @app.route('/api/songs/reanalyze-all', methods=['POST'])
 def reanalyze_all():
+  try:
     conn = get_db()
     rows = conn.execute('SELECT * FROM songs').fetchall()
     import json
@@ -505,6 +518,10 @@ def reanalyze_all():
             results.append({'id': row['id'], 'name': row['name'], 'status': 'fail'})
     conn.close()
     return jsonify({'results': results})
+  except Exception as e:
+    import traceback
+    traceback.print_exc()
+    return jsonify({'error': str(e)}), 500
 
 @app.route('/api/songs/<int:song_id>', methods=['PUT'])
 def update_song(song_id):
@@ -675,4 +692,4 @@ if __name__ == '__main__':
     os.makedirs(AUDIO_DIR, exist_ok=True)
     init_db()
     analyze_unprocessed_songs()
-    app.run(debug=True, port=7000)
+    app.run(debug=True, port=int(os.environ.get('PORT', 8000)))

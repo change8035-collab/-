@@ -1002,8 +1002,13 @@ function drawMenu(){
   ctx.textAlign='center';
   ctx.font='800 48px Pretendard,sans-serif'; ctx.fillStyle='#191F28';
   ctx.fillText('BEAT ZONE',W/2,startY+40);
-  ctx.font='500 16px Pretendard,sans-serif'; ctx.fillStyle='#191F28';
-  ctx.fillText('리듬에 맞춰 노트를 처리하세요',W/2,startY+68);
+  if(SONGS.length===0){
+    ctx.font='500 16px Pretendard,sans-serif'; ctx.fillStyle='#191F28';
+    ctx.fillText('+ 버튼을 눌러 곡을 추가하세요',W/2,startY+68);
+  } else {
+    ctx.font='500 16px Pretendard,sans-serif'; ctx.fillStyle='#191F28';
+    ctx.fillText('리듬에 맞춰 노트를 처리하세요',W/2,startY+68);
+  }
 
   // Song cards (4개씩 그리드)
   var rowItems=Math.min(allItems,cols);
@@ -1011,11 +1016,6 @@ function drawMenu(){
   var gridStartX=W/2-totW/2;
   if(gridStartX<20) gridStartX=20;
   var gridStartY=startY+titleH+20;
-
-  if(SONGS.length===0){
-    ctx.font='500 16px Pretendard,sans-serif'; ctx.fillStyle='#191F28';
-    ctx.fillText('아래 + 버튼으로 곡을 추가하세요',W/2,H/2-65);
-  }
 
   menuCards=[];
   for(var i=0;i<SONGS.length;i++){

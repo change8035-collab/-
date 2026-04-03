@@ -4,6 +4,7 @@ librosa
 numpy
 imageio-ffmpeg
 gunicorn
+BeatNet
 demucs
 torch
 torchaudio
