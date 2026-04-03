@@ -758,7 +758,7 @@ var laneFlash=[0,0,0,0];
 var judgeDisp={txt:'',color:'#fff',life:0};
 
 // ── Start ──────────────────────────────────────
-var baseNotePPS=280;
+var baseNotePPS=320;
 function startGame(){
   if(AC.state==='suspended') AC.resume();
   song = SONGS[selSong];
@@ -2179,15 +2179,31 @@ startGame=function(){
 var _origLaunchPlay=launchPlay;
 launchPlay=function(){
   var lt=(hitY()+30)/NOTE_PPS;
-  songStartAC=AC.currentTime+lt+0.1;
   if(song.youtube_id){
-    // 유튜브 곡: 영상 소리를 직접 사용, 다운로드 오디오 재생 안 함
+    // 유튜브 곡: 영상 먼저 로드 후 재생 시작되면 노트 시작
     showYTBackground(song.youtube_id);
+    // 영상 로딩 대기 (iframe 로드 + 재생 시작까지)
+    var waitForPlay = function(){
+      var iframe = document.getElementById('yt-bg-iframe');
+      if(iframe){
+        // 영상 로드 후 약간의 딜레이를 두고 노트 시작
+        songStartAC = AC.currentTime + lt + 0.3;
+        state='play';
+      } else {
+        setTimeout(waitForPlay, 100);
+      }
+    };
+    // 2초 후 시작 (영상 로딩 시간 확보)
+    setTimeout(function(){
+      songStartAC = AC.currentTime + lt;
+      state='play';
+    }, 2000);
   } else {
     // 로컬 파일: 다운로드 오디오 재생
+    songStartAC=AC.currentTime+lt+0.1;
     startBGM(song, songStartAC);
+    state='play';
   }
-  state='play';
 };
 
 var _origEndGame=endGame;
