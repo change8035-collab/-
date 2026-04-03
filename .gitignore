@@ -1,0 +1,3 @@
+beatzone.db
+static/audio/*
+!static/audio/.gitkeep
