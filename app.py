@@ -484,6 +484,28 @@ def reanalyze_song(song_id):
     conn.close()
     return jsonify({'ok': True, 'notes': len(analysis['notes']) if analysis else 0})
 
+@app.route('/api/songs/reanalyze-all', methods=['POST'])
+def reanalyze_all():
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM songs').fetchall()
+    import json
+    results = []
+    for row in rows:
+        audio_path = os.path.join(AUDIO_DIR, row['audio_filename'])
+        if not os.path.exists(audio_path):
+            results.append({'id': row['id'], 'name': row['name'], 'status': 'skip', 'reason': '파일 없음'})
+            continue
+        analysis = analyze_audio(audio_path)
+        if analysis:
+            conn.execute('UPDATE songs SET bpm=?, duration=?, analyzed_notes=? WHERE id=?',
+                          (analysis['bpm'], analysis['duration'], json.dumps(analysis['notes']), row['id']))
+            conn.commit()
+            results.append({'id': row['id'], 'name': row['name'], 'status': 'ok', 'notes': len(analysis['notes'])})
+        else:
+            results.append({'id': row['id'], 'name': row['name'], 'status': 'fail'})
+    conn.close()
+    return jsonify({'results': results})
+
 @app.route('/api/songs/<int:song_id>', methods=['PUT'])
 def update_song(song_id):
     data = request.get_json()

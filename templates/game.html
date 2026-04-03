@@ -140,6 +140,11 @@ canvas { display:block; position:fixed; top:0; left:0; z-index:3; }
       <div class="key-label">클릭 후 원하는 키를 누르세요</div>
     </div>
   </div>
+  <button id="reanalyze-all-btn" style="width:100%; margin-top:12px; padding:10px; border-radius:12px;
+    background:#FFF3E0; border:1px solid #FF9800; color:#E65100; font-size:13px; font-weight:600; cursor:pointer;">
+    🔄 전체 곡 재분석 (Demucs)
+  </button>
+  <div id="reanalyze-status" style="display:none; margin-top:8px; font-size:12px; color:#8B95A1; text-align:center;"></div>
   <button class="close-btn" id="sp-close">닫기</button>
 </div>
 <!-- 곡 추가 모달 -->
@@ -1643,6 +1648,33 @@ function closeSettings(){
   bv.oninput=function(){ bgmGain.gain.value=bv.value/100; bvl.textContent=bv.value; };
   sv.oninput=function(){ sfxGain.gain.value=sv.value/100; svl.textContent=sv.value; };
   document.getElementById('sp-close').onclick=closeSettings;
+  document.getElementById('reanalyze-all-btn').onclick=function(){
+    var btn=this;
+    var status=document.getElementById('reanalyze-status');
+    btn.disabled=true;
+    btn.textContent='분석 중... (시간이 걸릴 수 있습니다)';
+    status.style.display='block';
+    status.textContent='서버에서 Demucs로 음원 분리 중...';
+    fetch('/api/songs/reanalyze-all',{method:'POST'})
+      .then(function(r){return r.json();})
+      .then(function(data){
+        var results=data.results||[];
+        var ok=results.filter(function(r){return r.status==='ok';}).length;
+        var fail=results.filter(function(r){return r.status!=='ok';}).length;
+        status.textContent='✅ 완료! '+ok+'곡 재분석 성공'+(fail>0?', '+fail+'곡 실패':'');
+        status.style.color='#00C853';
+        btn.textContent='🔄 전체 곡 재분석 (Demucs)';
+        btn.disabled=false;
+        // 곡 목록 새로고침
+        loadSongs();
+      })
+      .catch(function(e){
+        status.textContent='❌ 에러: '+e.message;
+        status.style.color='#FF4444';
+        btn.textContent='🔄 전체 곡 재분석 (Demucs)';
+        btn.disabled=false;
+      });
+  };
 })();
 
 // 배경 클릭 시 모달 닫기
